@@ -770,6 +770,7 @@ const HIST=[];
 function show(id,push=true){
   /* leaving the topic picker any other way ends the "choosing for the room" detour */
   if(id!=='topics'&&typeof NET!=='undefined') NET.fromLobby=false;
+  if(id!=='hero'&&typeof NET!=='undefined') NET.fromRoom=false;
   const cur=$$('.screen.on')[0];
   if(cur&&push) HIST.push(cur.id);
   $$('.screen').forEach(s=>s.classList.remove('on'));
@@ -2760,7 +2761,7 @@ class Realtime{
 const NET={
   on:false, role:'', code:'', mode:'race', rt:null, plan:null,
   mate:null, mateState:null, lastSend:0, lastSig:'', buf:[], gap:120, status:'', lastHeard:0, hiTimer:null,
-  results:{}, pendingHelp:null, helpFor:null,
+  results:{}, pendingHelp:null, helpFor:null, invited:false, fromRoom:false,
   me(){ return {name:S.name||'Player', avatar:S.avatar||'🦊', hero:S.hero} },
   log(m){ this.status=m; if($('#s-online').classList.contains('on')) renderOnline() },
   async connect(code,role,mode){
@@ -2800,6 +2801,7 @@ const NET={
         if(m.role===this.role) return;                 /* ignore an echo of our own beat */
         const fresh=!this.mate;
         this.mate={name:m.name||'Player',avatar:m.avatar||'🙂',hero:m.hero||'azure'};
+        if(!fresh&&$('#s-online').classList.contains('on')) renderOnline();   /* they changed hero or name */
         if(fresh){ this.log('Connected with '+this.mate.avatar+' '+this.mate.name);
           toast(this.mate.avatar+' '+this.mate.name+' joined');
           this.send({t:'hi',role:this.role,...this.me()});   /* answer so they see us straight away */
@@ -3085,6 +3087,19 @@ function hostPlanPanel(){
     '<button class="big-btn" id="net-start" style="margin-top:16px" '+(NET.mate?'':'disabled')+'>▶ Start the level for both</button>'+
     '<p class="muted" style="margin-top:10px">Your partner sees this list straight away and gets exactly the same level.</p></div>';
 }
+/* the guest chooses nothing about the level — only who they are in it */
+function guestSelfPanel(){
+  return '<div class="panel"><h3>🎭 You in this room</h3>'+
+    '<div class="kv"><span>Name</span><b>'+esc(S.name||'Player')+'</b></div>'+
+    '<div class="kv"><span>Avatar</span><b>'+(S.avatar||'🦊')+'</b></div>'+
+    '<div class="kv"><span>Hero</span><b>'+esc(heroDef(S.hero).n)+'</b></div>'+
+    '<div class="row" style="margin-top:10px"><button class="pill gold" id="net-me">🎨 Change name, avatar or hero</button></div>'+
+    '<p class="muted" style="margin-top:8px">Everything else — the mode, the topics, the difficulty and the kind of tasks — '+
+    'comes from the host. Just wait for them to start.</p></div>';
+}
+function wireGuestSelf(){
+  if($('#net-me')) $('#net-me').onclick=()=>{ NET.fromRoom=true; show('hero') };
+}
 function guestPlanPanel(){
   const p=NET.plan;
   if(!p) return '<div class="panel"><h3>📚 What the room will play</h3>'+
@@ -3135,6 +3150,75 @@ function wireHostPlan(){
   if(full) full.onclick=()=>{ NET.fromLobby=true; show('topics') };
 }
 
+/* ---------- invite links ----------
+   The host copies one link, the partner opens it and is already in the room: the mode,
+   the topics, the difficulty and the task format all come from the host. Only what is
+   personal — name, avatar, hero — stays with the player who opened the link. */
+function joinLink(code,mode){
+  const base=location.origin+location.pathname;
+  return base+'#join='+encodeURIComponent(code)+'&m='+(mode||NET.mode||'race');
+}
+function linkIsShareable(){ return location.protocol==='http:'||location.protocol==='https:' }
+function linkInvite(){
+  const s=(location.hash||'').replace(/^#/,'')+'&'+(location.search||'').replace(/^\?/,'');
+  const c=/(?:^|&)(?:join|room|r)=([A-Za-z0-9]{4})/.exec(s);
+  if(!c) return null;
+  const m=/(?:^|&)m=(race|coop)/i.exec(s);
+  return {code:c[1].toUpperCase(), mode:m?m[1].toLowerCase():''};
+}
+/* opened through an invite: connect as a guest straight away, with nothing to choose */
+async function autoJoin(){
+  const inv=linkInvite(); if(!inv) return false;
+  if(inv.mode) NET.mode=inv.mode;
+  NET.invited=true;
+  show('online');
+  NET.log('Joining room '+inv.code+'…'); renderOnline();
+  const ok=await NET.connect(inv.code,'guest',NET.mode);
+  renderOnline();
+  if(ok) toast('You are in room '+inv.code);
+  else NET.log('Room '+inv.code+' did not answer. Ask for a fresh link, or type the code below by hand.');
+  return ok;
+}
+/* a changed name, avatar or hero is announced at once, so the partner's screen keeps up */
+function netMe(){ if(NET.on) NET.send({t:'hi',role:NET.role,...NET.me()}) }
+async function copyText(t){
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(t); return true } }catch(e){}
+  try{ const ta=document.createElement('textarea'); ta.value=t;
+    ta.style.cssText='position:fixed;left:-9999px'; document.body.appendChild(ta);
+    ta.select(); const ok=document.execCommand&&document.execCommand('copy');
+    document.body.removeChild(ta); return !!ok; }catch(e){ return false }
+}
+function invitePanel(){
+  const link=joinLink(NET.code);
+  if(!linkIsShareable())
+    return '<div class="panel"><h3>🔗 Invite link</h3>'+
+      '<p class="muted">The game is open from a file on this device, so a link would not work for anyone else. '+
+      'Put the game online (GitHub Pages) and the link will appear here. For now give your partner the room code '+
+      '<b>'+esc(NET.code)+'</b> — they can type it in Play together → Join.</p></div>';
+  return '<div class="panel"><h3>🔗 Invite link</h3>'+
+    '<input id="net-link" class="qinput" readonly style="text-align:left;font-size:13px;letter-spacing:0" value="'+esc(link)+'">'+
+    '<div class="row" style="margin-top:10px">'+
+      '<button class="pill gold" id="net-copy">📋 Copy link</button>'+
+      (navigator.share?'<button class="pill" id="net-share">📤 Share</button>':'')+
+      '<button class="pill" id="net-copycode">Copy the code only</button></div>'+
+    '<p class="muted" style="margin-top:8px">Send this to your partner. Opening it puts them straight into the room — '+
+    'mode, topics, difficulty and the task format are all yours. They only choose their own name, avatar and hero.</p></div>';
+}
+function wireInvite(){
+  const inp=$('#net-link');
+  if($('#net-copy')) $('#net-copy').onclick=async()=>{
+    const ok=await copyText(joinLink(NET.code));
+    if(ok) toast('Link copied — send it to your partner');
+    else { if(inp){ inp.focus(); inp.select() } toast('Select the link and copy it by hand') }
+  };
+  if($('#net-copycode')) $('#net-copycode').onclick=async()=>{
+    toast(await copyText(NET.code)?('Code '+NET.code+' copied'):('Room code: '+NET.code));
+  };
+  if($('#net-share')) $('#net-share').onclick=()=>{
+    navigator.share({title:'Crystal of Words',text:'Join my room '+NET.code,url:joinLink(NET.code)}).catch(()=>{});
+  };
+  if(inp) inp.onclick=()=>{ inp.focus(); inp.select() };
+}
 /* ---------- lobby screen ---------- */
 function renderOnline(){
   const cfg=S.net||(S.net={url:'',key:''});
@@ -3151,8 +3235,8 @@ function renderOnline(){
            '<p class="muted">You are playing as the Sensei, so your students can see who is leading.</p>')
         : '')+
       '<button class="pill" id="net-leave" style="margin-top:12px">Leave room</button></div>'+
-      (NET.role==='host' ? hostPlanPanel() : guestPlanPanel());
-    if(NET.role==='host') wireHostPlan();
+      (NET.role==='host' ? invitePanel()+hostPlanPanel() : guestSelfPanel()+guestPlanPanel());
+    if(NET.role==='host'){ wireHostPlan(); wireInvite() } else wireGuestSelf();
     if(NET.role==='host'&&$('#net-start')) $('#net-start').onclick=()=>{
       const seed='mp'+Date.now()+'-'+Math.floor(Math.random()*1e6);
       const cfg={t:'cfg',world:SESSION.world,diff:SESSION.diff,seed,mode:NET.mode,
@@ -3170,6 +3254,10 @@ function renderOnline(){
     return;
   }
   body.innerHTML=
+   (NET.invited?'<div class="panel"><h3>🔗 You were invited to room '+esc((linkInvite()||{}).code||'')+'</h3>'+
+     '<p class="muted">'+esc(NET.status||'The room did not answer.')+'</p>'+
+     '<div class="row" style="margin-top:10px"><button class="pill gold" id="net-rejoin">↻ Try the room again</button></div>'+
+     '<p class="muted" style="margin-top:8px">Still nothing? Ask for a fresh link — a room only exists while the host has the game open.</p></div>':'')+
    '<div class="panel"><h3>How it works</h3><p class="muted">Two players, one level, built from the same seed so both see exactly the same world.<br><br>'+
    '<b>🏁 Race</b> — you both run the level at the same time and see each other as a ghost. Whoever finishes first wins; coins and accuracy are compared at the end.<br>'+
    '<b>🤝 Co-op</b> — one shared goal. Coins go into a common purse, the key, the shards and the boss count for both of you, and when one of you gets a question wrong the other is offered the chance to answer it and rescue the mistake.</p></div>'+
@@ -3192,6 +3280,10 @@ function renderOnline(){
      '<button class="pill" id="net-reset">Use the built-in one</button></div>'+
      '<div class="muted" id="net-test-out" style="margin-top:10px"></div></div>';
   $$('[data-mode]').forEach(b=>b.onclick=()=>{ NET.mode=b.dataset.mode; renderOnline() });
+  /* an invite that could not connect: keep the code in the box so one tap retries it */
+  const inv=linkInvite();
+  if(inv&&$('#net-code')) $('#net-code').value=inv.code;
+  if($('#net-rejoin')) $('#net-rejoin').onclick=()=>autoJoin();
   $('#net-url').value=cfg.url||''; $('#net-key').value=cfg.key||'';
   $('#net-url').placeholder=NET_DEFAULT.url?'using the built-in server':'https://xxxx.supabase.co';
   $('#net-save').onclick=()=>{ cfg.url=$('#net-url').value.trim(); cfg.key=$('#net-key').value.trim(); save(); toast('Server saved') };
@@ -3347,17 +3439,20 @@ function heroPreview(id,size){
   return '<img src="'+PREVIEW[id]+'" alt="'+esc(heroDef(id).n)+'" style="height:'+s+'px;display:block;margin:0 auto">';
 }
 function renderHero(){
+  /* opened from a room: the way out leads back to the room, not to the menu */
+  const bb=$('#s-hero .back'), inRoom=NET.on&&NET.fromRoom;
+  if(bb){ bb.dataset.go=inRoom?'online':'menu'; bb.textContent=inRoom?'← Back to the room':'← Menu' }
   const nm=$('#hr-name');
   nm.value=S.name||'';
-  nm.oninput=()=>{ S.name=nm.value.slice(0,16); save() };
+  nm.oninput=()=>{ S.name=nm.value.slice(0,16); save(); netMe() };
   $('#hr-avatars').innerHTML=AVATARS.map(a=>
     '<button class="pill '+(S.avatar===a?'gold':'')+'" data-av="'+a+'" style="font-size:22px;padding:8px 12px">'+a+'</button>').join('');
-  $$('[data-av]').forEach(b=>b.onclick=()=>{ S.avatar=b.dataset.av; save(); renderHero(); renderMenu() });
+  $$('[data-av]').forEach(b=>b.onclick=()=>{ S.avatar=b.dataset.av; save(); netMe(); renderHero(); renderMenu() });
   $('#hr-heroes').innerHTML=HEROES.map(h=>
     '<div class="item" style="align-items:center;text-align:center">'+heroPreview(h.id,h.mentor?86:72)+
     '<h4>'+h.n+(h.mentor?' <span class="badge learning">teacher</span>':'')+'</h4><p>'+h.d+'</p>'+
     '<button class="'+(S.hero===h.id?'eq':'')+'" data-hero="'+h.id+'">'+(S.hero===h.id?'Selected':'Play as '+h.n)+'</button></div>').join('');
-  $$('[data-hero]').forEach(b=>b.onclick=()=>{ S.hero=b.dataset.hero; save(); renderHero(); toast('Hero: '+heroDef(S.hero).n) });
+  $$('[data-hero]').forEach(b=>b.onclick=()=>{ S.hero=b.dataset.hero; save(); netMe(); renderHero(); toast('Hero: '+heroDef(S.hero).n) });
 }
 
 function renderShop(){
@@ -3782,6 +3877,8 @@ document.addEventListener('pointerdown',()=>Snd.resume(),{once:true});
 document.addEventListener('keydown',()=>Snd.resume(),{once:true});
 SESSION.diff=S.diff||0;
 loadHeroSheets(); syncCourses(); ensureDaily(); updateTouchVisibility(); renderMenu();
+/* an invite link lands straight in the room — nothing to pick, everything comes from the host */
+autoJoin();
 
 </script>
 
