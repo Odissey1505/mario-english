@@ -119,17 +119,20 @@ function heroPreview(id,size){
   return '<img src="'+PREVIEW[id]+'" alt="'+esc(heroDef(id).n)+'" style="height:'+s+'px;display:block;margin:0 auto">';
 }
 function renderHero(){
+  /* opened from a room: the way out leads back to the room, not to the menu */
+  const bb=$('#s-hero .back'), inRoom=NET.on&&NET.fromRoom;
+  if(bb){ bb.dataset.go=inRoom?'online':'menu'; bb.textContent=inRoom?'← Back to the room':'← Menu' }
   const nm=$('#hr-name');
   nm.value=S.name||'';
-  nm.oninput=()=>{ S.name=nm.value.slice(0,16); save() };
+  nm.oninput=()=>{ S.name=nm.value.slice(0,16); save(); netMe() };
   $('#hr-avatars').innerHTML=AVATARS.map(a=>
     '<button class="pill '+(S.avatar===a?'gold':'')+'" data-av="'+a+'" style="font-size:22px;padding:8px 12px">'+a+'</button>').join('');
-  $$('[data-av]').forEach(b=>b.onclick=()=>{ S.avatar=b.dataset.av; save(); renderHero(); renderMenu() });
+  $$('[data-av]').forEach(b=>b.onclick=()=>{ S.avatar=b.dataset.av; save(); netMe(); renderHero(); renderMenu() });
   $('#hr-heroes').innerHTML=HEROES.map(h=>
     '<div class="item" style="align-items:center;text-align:center">'+heroPreview(h.id,h.mentor?86:72)+
     '<h4>'+h.n+(h.mentor?' <span class="badge learning">teacher</span>':'')+'</h4><p>'+h.d+'</p>'+
     '<button class="'+(S.hero===h.id?'eq':'')+'" data-hero="'+h.id+'">'+(S.hero===h.id?'Selected':'Play as '+h.n)+'</button></div>').join('');
-  $$('[data-hero]').forEach(b=>b.onclick=()=>{ S.hero=b.dataset.hero; save(); renderHero(); toast('Hero: '+heroDef(S.hero).n) });
+  $$('[data-hero]').forEach(b=>b.onclick=()=>{ S.hero=b.dataset.hero; save(); netMe(); renderHero(); toast('Hero: '+heroDef(S.hero).n) });
 }
 
 function renderShop(){

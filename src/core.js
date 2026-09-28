@@ -62,6 +62,7 @@ const HIST=[];
 function show(id,push=true){
   /* leaving the topic picker any other way ends the "choosing for the room" detour */
   if(id!=='topics'&&typeof NET!=='undefined') NET.fromLobby=false;
+  if(id!=='hero'&&typeof NET!=='undefined') NET.fromRoom=false;
   const cur=$$('.screen.on')[0];
   if(cur&&push) HIST.push(cur.id);
   $$('.screen').forEach(s=>s.classList.remove('on'));
