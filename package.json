@@ -1,0 +1,12 @@
+{
+  "name": "crystal-of-words",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A 2D English-learning platformer. Plain HTML, CSS and JavaScript — no framework, no build step to play.",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "build": "python3 tools/build_course.py && python3 tools/build.py",
+    "test": "bash tools/test.sh"
+  },
+  "devDependencies": { "canvas": "^3.2.0", "jsdom": "^27.0.0", "ws": "^8.18.3" }
+}
