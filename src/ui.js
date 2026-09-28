@@ -85,7 +85,7 @@ function renderBrief(){
     '<div class="kv"><span>Coins needed</span><b>🪙 '+D.coins+'</b></div>'+
     '<div class="kv"><span>Vocabulary topics</span><b>'+(SESSION.topics.v.map(t=>WORDBANK[t].n).join(', ')||'—')+'</b></div>'+
     '<div class="kv"><span>Grammar topics</span><b>'+(SESSION.topics.g.map(t=>GRAMMARBANK[t].n).join(', ')||'—')+'</b></div>'+
-    '<p class="muted" style="margin-top:12px">Controls: A/D or ←→ to move, Space to jump, <b>Shift or C for a super jump (5 flights per level)</b>, F to attack, E to interact, Q to use a boost, Esc to pause. Out of coins? Go back to a rune stone 💠 and answer more questions — they never run out. On a phone use the on-screen buttons.</p>';
+    '<p class="muted" style="margin-top:12px">Controls: A/D or ←→ to move, Space to jump, <b>Shift or C for a super jump (5 flights per level)</b>, F to attack, E to interact, Q to use a boost, Esc to pause. Out of coins? Go back to a rune stone 💠 and answer more questions — they never run out.<br><br>On a phone or tablet: the left stick moves (a light push walks, a full push runs, and pushing it <b>up</b> also jumps), ⤴ jumps, ⚔ attacks, 🚀 is the super jump. You can slide your thumb straight from one button to another. Buttons too low or too small? Settings → <b>Button height</b> and <b>Button size</b>.</p>';
   $('#brief-gear').innerHTML=GEAR.filter(g=>S.gear.owned.includes(g.id)).map(g=>
     '<div class="item"><div class="ic">'+g.ic+'</div><h4>'+g.n+'</h4><p>'+g.d+'</p>'+
     '<button class="'+(S.gear.eq[g.slot]===g.id?'eq':'')+'" data-eq="'+g.id+'">'+(S.gear.eq[g.slot]===g.id?'Equipped':'Equip')+'</button></div>').join('')
@@ -247,6 +247,10 @@ function renderSettings(){
    '<div class="kv"><span>Music</span><button class="pill" id="set-mus">'+(S.settings.music?'On':'Off')+'</button></div>'+
    '<div class="kv"><span>Volume</span><button class="pill" id="set-vol">'+({off:'Muted',low:'Low',mid:'Medium',high:'High'})[S.settings.volume||'mid']+'</button></div>'+
    '<div class="kv"><span>On-screen buttons</span><button class="pill" id="set-touch">'+({auto:'Auto',on:'Always',off:'Never'})[S.settings.touch]+'</button></div>'+
+   '<div class="kv"><span>Button height</span><button class="pill" id="set-lift">'+
+     ({low:'Low',mid:'Raised',high:'High',huge:'Very high'})[S.settings.lift||'mid']+'</button></div>'+
+   '<div class="kv"><span>Button size</span><button class="pill" id="set-tsize">'+
+     ({s:'Small',m:'Normal',l:'Large',xl:'Extra large'})[S.settings.tsize||'m']+'</button></div>'+
    '<div class="kv"><span>Progress</span><button class="pill" id="set-reset">Reset everything</button></div>'+
    '<p class="muted" style="margin-top:12px">Progress is saved in the localStorage of this browser. Supabase or Firebase can be added later for classes and syncing between devices.</p>';
   $('#set-snd').onclick=()=>{S.settings.sound=!S.settings.sound; save(); renderSettings()};
@@ -255,5 +259,9 @@ function renderSettings(){
   $('#set-vol').onclick=()=>{const o=['off','low','mid','high']; S.settings.volume=o[(o.indexOf(S.settings.volume||'mid')+1)%4];
     save(); Snd.setVolume(); Snd.coin(); renderSettings()};
   $('#set-touch').onclick=()=>{const o=['auto','on','off']; S.settings.touch=o[(o.indexOf(S.settings.touch)+1)%3]; save(); updateTouchVisibility(); renderSettings()};
+  $('#set-lift').onclick=()=>{const o=['low','mid','high','huge'];
+    S.settings.lift=o[(o.indexOf(S.settings.lift||'mid')+1)%4]; save(); applyPadStyle(); renderSettings()};
+  $('#set-tsize').onclick=()=>{const o=['s','m','l','xl'];
+    S.settings.tsize=o[(o.indexOf(S.settings.tsize||'m')+1)%4]; save(); applyPadStyle(); renderSettings()};
   $('#set-reset').onclick=()=>{ if(confirm('Reset all progress?')){ localStorage.removeItem(KEY); S=load(); renderSettings(); toast('Progress reset') } };
 }

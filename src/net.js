@@ -64,7 +64,7 @@ class Realtime{
 
 const NET={
   on:false, role:'', code:'', mode:'race', rt:null, plan:null,
-  mate:null, mateState:null, lastSend:0, status:'', lastHeard:0, hiTimer:null,
+  mate:null, mateState:null, lastSend:0, lastSig:'', buf:[], gap:120, status:'', lastHeard:0, hiTimer:null,
   results:{}, pendingHelp:null, helpFor:null,
   me(){ return {name:S.name||'Player', avatar:S.avatar||'🦊', hero:S.hero} },
   log(m){ this.status=m; if($('#s-online').classList.contains('on')) renderOnline() },
@@ -72,7 +72,7 @@ const NET={
     const cfg=netCfg();
     if(!cfg.url||!cfg.key){ toast('Add a Supabase link and key in Server settings'); return false }
     this.log('Connecting…');
-    this.code=code; this.role=role; this.mode=mode; this.mate=null; this.mateState=null; this.results={};
+    this.code=code; this.role=role; this.mode=mode; this.mate=null; this.mateState=null; this.buf=[]; this.results={};
     this.rt=new Realtime(realtimeURL(cfg.url,cfg.key),'cow-'+code);
     this.rt.onEvent=m=>this.onMsg(m);
     this.rt.onState=st=>{ if(st==='closed'&&this.on){ this.on=false; this.mate=null;
@@ -85,7 +85,7 @@ const NET={
     this.hiTimer=setInterval(()=>{
       if(!this.on) return;
       this.send({t:'hi',role:this.role,...this.me()});
-      if(this.mate&&Date.now()-this.lastHeard>7000){ this.mate=null; this.mateState=null;
+      if(this.mate&&Date.now()-this.lastHeard>7000){ this.mate=null; this.mateState=null; this.buf=[];
         this.log('Your partner left the room.'); toast('Your partner left — carry on solo'); hud() }
     },2000);
     this.send({t:'hi',role:this.role,...this.me()});
@@ -94,7 +94,7 @@ const NET={
   },
   leave(){ try{ this.send({t:'bye'}) }catch(e){}
     clearInterval(this.hiTimer); if(this.rt) this.rt.close();
-    this.on=false; this.rt=null; this.mate=null; this.mateState=null; this.code=''; this.results={};
+    this.on=false; this.rt=null; this.mate=null; this.mateState=null; this.buf=[]; this.code=''; this.results={};
     const mb=$('#mate'); if(mb) mb.style.display='none'; this.log(''); },
   send(m){ if(this.on&&this.rt) this.rt.send(m) },
   onMsg(m){
@@ -122,16 +122,18 @@ const NET={
         toast('Host started the level'); startLevel(m.world,m.diff,{seed:m.seed});
         break;
       case 'lobby':                                /* the host tells the room what will be played */
-        NET.plan={tv:m.tv,tg:m.tg,diff:m.diff,names:m.names};
+        NET.plan={tv:m.tv,tg:m.tg,diff:m.diff,names:m.names,o:m.o};
+        /* the host owns the task format too, so the guest already plays by it in the lobby */
+        if(m.o) S.opts={emoji:m.o.emoji!==false, answer:m.o.answer||'mixed'};
         if($('#s-online').classList.contains('on')) renderOnline();
         break;
-      case 'pos': NET.mateState=Object.assign(NET.mateState||{},m); break;
+      case 'pos': netPos(m); break;
       case 'stat': NET.mateState=Object.assign(NET.mateState||{},m); hud(); break;
       case 'ev': netEvent(m); break;
       case 'help': netHelpRequest(m); break;
       case 'helped': netHelped(m); break;
       case 'fin': NET.results.mate=m; netCheckFinish(); break;
-      case 'bye': NET.mate=null; NET.mateState=null; toast('Your partner left'); hud(); break;
+      case 'bye': NET.mate=null; NET.mateState=null; NET.buf=[]; toast('Your partner left'); hud(); break;
     }
   }
 };
@@ -176,36 +178,135 @@ function askPartner(q){
     setTimeout(()=>{ if(NET.pendingHelp&&NET.pendingHelp.id===id){ NET.pendingHelp=null; res(false) } },13000);
   });
 }
+/* ---- the partner's position, smoothed ----
+   Packets arrive every ~100 ms and the screen draws every ~16 ms, so painting the
+   last packet where it landed makes the partner stand still and then teleport.
+   Instead every packet is stamped with its arrival time and the ghost is drawn
+   slightly in the past, gliding between the two samples that surround that moment. */
+const MATE_DELAY=130;        /* how far behind live we render, in ms */
+const MATE_EXTRA=200;        /* how long we may guess ahead after a missed packet */
+function netPos(m){
+  NET.mateState=Object.assign(NET.mateState||{},m);
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  const b=NET.buf, last=b[b.length-1];
+  if(last){ const d=now-last.t; if(d>30&&d<2000) NET.gap=NET.gap*.7+d*.3 }   /* learn the real rate */
+  b.push({t:now,x:m.x,y:m.y,d:m.d,f:m.f,b:m.b,fly:m.fly});
+  if(b.length>6) b.shift();
+}
+function mateAt(now){
+  const b=NET.buf; if(!b.length) return null;
+  const newest=b[b.length-1];
+  const age=now-newest.t;
+  /* nothing for a while: stop guessing, park the ghost and say so */
+  if(age>1200) return {x:newest.x,y:newest.y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:age};
+  const want=now-Math.max(MATE_DELAY,NET.gap*1.3);
+  if(want>=newest.t){                                    /* ahead of the last packet: glide on */
+    const prev=b[b.length-2];
+    let x=newest.x, y=newest.y;
+    if(prev&&newest.t>prev.t){
+      const k=Math.min(want-newest.t,MATE_EXTRA)/(newest.t-prev.t);
+      x+=(newest.x-prev.x)*k; y+=(newest.y-prev.y)*k;
+    }
+    return {x,y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:0};
+  }
+  for(let i=b.length-1;i>0;i--){
+    const a=b[i-1], z=b[i];
+    if(want>=a.t&&want<=z.t){
+      const k=(want-a.t)/Math.max(1,z.t-a.t);
+      if(Math.abs(z.x-a.x)>260||Math.abs(z.y-a.y)>260)     /* a real jump (respawn, new level): snap */
+        return {x:z.x,y:z.y,d:z.d,f:z.f,busy:z.b,fly:z.fly,stale:0};
+      return {x:a.x+(z.x-a.x)*k, y:a.y+(z.y-a.y)*k, d:z.d, f:k>.5?z.f:a.f, busy:z.b, fly:z.fly, stale:0};
+    }
+  }
+  const o=b[0];
+  return {x:o.x,y:o.y,d:o.d,f:o.f,busy:o.b,fly:o.fly,stale:0};
+}
 /* ---- the partner's character, drawn as a translucent ghost ---- */
 function drawMate(c){
-  const m=NET.mateState; if(!m||m.x==null) return;
-  c.save(); c.globalAlpha=NET.mode==='coop'?.9:.5;
-  const H=heroSheet(m.hero||'azure');
+  const st=NET.mateState; if(!st||st.x==null) return;
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  const m=mateAt(now); if(!m) return;
+  c.save(); c.globalAlpha=(NET.mode==='coop'?.9:.5)*(m.stale?.55:1);
+  const H=heroSheet(st.hero||'azure');
   const fy=m.y+P.h, cx=m.x+P.w/2;
   c.fillStyle='rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(cx,fy+3,P.w*.5,5,0,0,7); c.fill();
+  if(m.fly){                                        /* the partner is mid super jump */
+    const g=c.createRadialGradient(cx,m.y+P.h/2,4,cx,m.y+P.h/2,40);
+    g.addColorStop(0,'rgba(120,230,255,.35)'); g.addColorStop(1,'rgba(120,230,255,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(cx,m.y+P.h/2,40,0,7); c.fill();
+  }
   if(H){ const f=H.meta[m.f]||H.meta.idle, sc=H.s;
     c.save(); c.translate(cx,fy); c.scale(m.d||1,1);
     c.drawImage(H.img,f[0],f[1],f[2],f[3],-f[4]*sc,-(f[5]+1)*sc,f[2]*sc,f[3]*sc); c.restore(); }
   else { c.fillStyle='#38E1C8'; rr(c,m.x,m.y,P.w,P.h,8); c.fill() }
   c.globalAlpha=1;
+  /* say out loud why the partner is not moving, so a pause never reads as a bug */
+  if(m.busy){
+    const by=m.y-26, bw=62;
+    c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-bw/2,by-14,bw,20,9); c.fill();
+    c.fillStyle='#FFE08A'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
+    c.fillText('💭 thinking',cx,by);
+  } else if(m.stale){
+    c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-26,m.y-40,52,20,9); c.fill();
+    c.fillStyle='#FF9EB5'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
+    c.fillText('📶 '+(m.stale/1000).toFixed(1)+'s',cx,m.y-26);
+  }
   c.font='bold 12px Rubik,sans-serif'; c.textAlign='center';
-  c.fillStyle='rgba(0,0,0,.5)'; c.fillText((m.a||'🙂')+' '+(m.nm||'Partner'),cx+1,m.y-9);
-  c.fillStyle=NET.mode==='coop'?'#38E1C8':'#FFC84A'; c.fillText((m.a||'🙂')+' '+(m.nm||'Partner'),cx,m.y-10);
+  c.fillStyle='rgba(0,0,0,.5)'; c.fillText((st.a||'🙂')+' '+(st.nm||'Partner'),cx+1,m.y-9);
+  c.fillStyle=NET.mode==='coop'?'#38E1C8':'#FFC84A'; c.fillText((st.a||'🙂')+' '+(st.nm||'Partner'),cx,m.y-10);
   c.textAlign='left'; c.restore();
 }
 function netTick(){
   if(!NET.on||!NET.mate||!LV) return;
   const now=performance.now();
-  if(now-NET.lastSend<70) return; NET.lastSend=now;
+  netLinkBadge(now);
+  /* 10 packets a second: Supabase Realtime throttles a channel at that rate by default,
+     and going over it is what turns a smooth partner into a stuttering one. */
+  if(now-NET.lastSend<100) return;
   const me=NET.me();
   const H=heroSheet(S.hero);
-  NET.send({t:'pos',x:Math.round(P.x),y:Math.round(P.y),d:P.face,f:heroFrame(H&&H.meta),
-            hero:me.hero,nm:me.name,a:me.avatar});
+  const msg={t:'pos',x:Math.round(P.x),y:Math.round(P.y),d:P.face,f:heroFrame(H&&H.meta),
+             b:LV.busy?1:0, fly:P.fly>0?1:0,
+             hero:me.hero,nm:me.name,a:me.avatar};
+  /* while nothing moves (a question is open, the hero stands still) one packet every
+     600 ms is enough to say "still here" — the rest of the budget stays for real motion */
+  const sig=msg.x+','+msg.y+','+msg.d+','+msg.f+','+msg.b;
+  if(sig===NET.lastSig&&now-NET.lastSend<600) return;
+  NET.lastSig=sig; NET.lastSend=now;
+  msg.ts=Math.round(now);
+  NET.send(msg);
 }
+/* the small 🌐 box in the HUD turns into a warning when packets stop arriving */
+function netLinkBadge(now){
+  const mb=$('#mate'); if(!mb) return;
+  const b=NET.buf, age=b.length?now-b[b.length-1].t:9999;
+  const bad=age>900;
+  if(mb.dataset.bad!==(bad?'1':'0')){
+    mb.dataset.bad=bad?'1':'0';
+    mb.style.color=bad?'#FF9EB5':'';
+    mb.style.borderColor=bad?'rgba(255,158,181,.6)':'';
+    mb.title=bad?'The partner’s data is late — a weak connection or a slow room':'Link is healthy';
+  }
+}
+/* a row of coins collected in one run becomes a single shared-coins packet */
+let coinPend=0, coinTimer=0;
+function netCoin(n){
+  coinPend+=n;
+  if(coinTimer) return;
+  coinTimer=setTimeout(()=>{ const k=coinPend; coinPend=0; coinTimer=0;
+    if(k&&NET.on&&NET.mate) NET.send({t:'ev',k:'coin',n:k}); },400);
+}
+/* score updates ride on the same budget as movement: picking up a row of coins used to
+   fire one packet per coin, which is exactly what pushes the channel over its limit */
+let statTimer=0;
 function netStat(){
   if(!NET.on||!NET.mate||!LV) return;
-  NET.send({t:'stat',coins:LV.coins,hearts:LV.hearts,ok:LV.stats.ok,bad:LV.stats.bad,
-            prog:Math.round(P.x/LV.w*100)});
+  if(statTimer) return;
+  statTimer=setTimeout(()=>{ statTimer=0;
+    if(!NET.on||!NET.mate||!LV) return;
+    NET.send({t:'stat',coins:LV.coins,hearts:LV.hearts,ok:LV.stats.ok,bad:LV.stats.bad,
+              prog:Math.round(P.x/LV.w*100)});
+  },400);
 }
 function netCheckFinish(){
   if(!NET.results.me||!NET.results.mate) return;
@@ -242,7 +343,7 @@ function planNames(){
 }
 function sendPlan(){
   if(!NET.on||NET.role!=='host') return;
-  NET.send({t:'lobby',tv:SESSION.topics.v,tg:SESSION.topics.g,diff:SESSION.diff,names:planNames()});
+  NET.send({t:'lobby',tv:SESSION.topics.v,tg:SESSION.topics.g,diff:SESSION.diff,names:planNames(),o:opt()});
 }
 /* every lesson of every course, for the quick picker */
 function lessonOptions(){
@@ -279,6 +380,13 @@ function hostPlanPanel(){
     '<h3 style="margin:16px 0 8px">Difficulty</h3>'+
     '<div class="row">'+DIFF.map(d=>
       '<button class="pill'+(SESSION.diff===d.id?' gold':'')+'" data-netdiff="'+d.id+'">'+d.n+'</button>').join('')+'</div>'+
+    '<h3 style="margin:16px 0 8px">Which tasks can come up</h3>'+
+    '<div class="row">'+ANSWER_MODES.map(m=>
+      '<button class="pill'+(answerMode()===m.id?' gold':'')+'" data-netam="'+m.id+'" title="'+esc(m.d)+'">'+m.n+'</button>').join('')+'</div>'+
+    '<div class="row" style="margin-top:8px">'+
+      '<button class="pill'+(useEmoji()?' gold':'')+'" data-netem="1">🖼️ Show pictures</button>'+
+      '<button class="pill'+(useEmoji()?'':' gold')+'" data-netem="0">🚫 Words only</button></div>'+
+    '<p class="muted" style="margin-top:8px">'+esc((ANSWER_MODES.find(m=>m.id===answerMode())||ANSWER_MODES[1]).d)+'</p>'+
     '<button class="big-btn" id="net-start" style="margin-top:16px" '+(NET.mate?'':'disabled')+'>▶ Start the level for both</button>'+
     '<p class="muted" style="margin-top:10px">Your partner sees this list straight away and gets exactly the same level.</p></div>';
 }
@@ -291,6 +399,9 @@ function guestPlanPanel(){
     '<div class="kv"><span>Vocabulary</span><b>'+fmt(p.names&&p.names.v)+'</b></div>'+
     '<div class="kv"><span>Grammar</span><b>'+fmt(p.names&&p.names.g)+'</b></div>'+
     '<div class="kv"><span>Difficulty</span><b>'+(DIFF[p.diff]?DIFF[p.diff].n:'—')+'</b></div>'+
+    '<div class="kv"><span>Tasks</span><b>'+
+      esc((ANSWER_MODES.find(m=>m.id===((p.o&&p.o.answer)||'mixed'))||ANSWER_MODES[1]).n)+
+      ' · '+((p.o&&p.o.emoji===false)?'words only':'pictures on')+'</b></div>'+
     '<p class="muted">The host chooses for the room. Waiting for them to start.</p></div>';
 }
 function setRoomTopics(v,g){
@@ -316,6 +427,14 @@ function wireHostPlan(){
   });
   $$('[data-netdiff]').forEach(b=>b.onclick=()=>{
     SESSION.diff=+b.dataset.netdiff; S.diff=SESSION.diff; save(); sendPlan(); renderOnline();
+  });
+  /* task format: the host decides for the room, and the guest sees it change live */
+  $$('[data-netam]').forEach(b=>b.onclick=()=>{
+    opt().answer=b.dataset.netam; save(); sendPlan(); renderOnline();
+    toast('Tasks: '+(ANSWER_MODES.find(m=>m.id===b.dataset.netam)||{}).n);
+  });
+  $$('[data-netem]').forEach(b=>b.onclick=()=>{
+    opt().emoji=b.dataset.netem==='1'; save(); sendPlan(); renderOnline();
   });
   const full=$('[data-netfull]');
   if(full) full.onclick=()=>{ NET.fromLobby=true; show('topics') };

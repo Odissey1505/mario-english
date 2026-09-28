@@ -2,7 +2,7 @@
    6. GAME ENGINE
    ===================================================================== */
 const CV=$('#cv'), CX=CV.getContext('2d');
-const K={}; let touchState={l:0,r:0,j:0,a:0,e:0,q:0,s:0};
+const K={}; let touchState={l:0,r:0,j:0,a:0,e:0,q:0,s:0,up:0,ax:0};
 const typing=e=>{ const t=e.target; return t&&(/^(INPUT|TEXTAREA)$/.test(t.tagName)||t.isContentEditable) };
 addEventListener('keydown',e=>{
   if(typing(e)) return;                    /* typing an answer — spaces and letters belong to the field */
@@ -11,13 +11,93 @@ addEventListener('keydown',e=>{
   if(e.code==='Escape'&&$('#s-game').classList.contains('on')) togglePause();
 });
 addEventListener('keyup',e=>{ if(typing(e)) return; K[e.code]=0 });
-function bindTouch(id,prop){ const el=$('#'+id);
-  const on=e=>{e.preventDefault(); touchState[prop]=1}, off=e=>{e.preventDefault(); touchState[prop]=0};
-  el.addEventListener('touchstart',on,{passive:false}); el.addEventListener('touchend',off,{passive:false});
-  el.addEventListener('touchcancel',off,{passive:false});
-  el.addEventListener('mousedown',on); el.addEventListener('mouseup',off); el.addEventListener('mouseleave',off);
+/* ---------- touch controls ----------
+   One tracker for the whole pad instead of a listener per button. A finger is followed
+   from the moment it lands until it lifts, so sliding from one button to the next works,
+   a thumb that drifts off a button releases it, and the stick keeps reporting while the
+   finger travels outside the base. That following is what "weak response" was missing. */
+const TBTNS=[['tj','j'],['ta','a'],['te','e'],['tq','q'],['ts','s']];
+const TSLOP=14;                       /* a little forgiveness around each circle */
+const FINGERS={};                     /* pointer/touch id → the button it holds, or 'stick' */
+function tPress(prop,on){
+  if(!prop||prop==='stick') return;
+  touchState[prop]=on?1:0;
+  const hit=TBTNS.find(b=>b[1]===prop); const el=hit&&$('#'+hit[0]);
+  if(el) el.classList.toggle('hot',!!on);
 }
-['tl:l','tr:r','tj:j','ta:a','te:e','tq:q','ts:s'].forEach(s=>{const [a,b]=s.split(':');bindTouch(a,b)});
+function tHit(x,y){
+  for(const [id,prop] of TBTNS){
+    const el=$('#'+id); if(!el) continue;
+    const r=el.getBoundingClientRect(); if(!r.width) continue;
+    const dx=x-(r.left+r.width/2), dy=y-(r.top+r.height/2), rad=r.width/2+TSLOP;
+    if(dx*dx+dy*dy<=rad*rad) return prop;
+  }
+  return null;
+}
+function stickMove(x,y){
+  const el=$('#tstick'); if(!el) return;
+  const r=el.getBoundingClientRect(); if(!r.width) return;
+  const max=r.width*.42;
+  let dx=x-(r.left+r.width/2), dy=y-(r.top+r.height/2);
+  const d=Math.hypot(dx,dy);
+  if(d>max){ dx*=max/d; dy*=max/d }
+  const kn=$('#tknob'); if(kn) kn.style.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)';
+  touchState.ax=clamp(dx/max,-1,1);
+  const ay=clamp(dy/max,-1,1);
+  touchState.l=touchState.ax<-.18?1:0;
+  touchState.r=touchState.ax>.18?1:0;
+  touchState.up=ay<-.55?1:0;          /* pushing the stick up jumps, as on a gamepad */
+}
+function stickOff(){
+  touchState.ax=0; touchState.l=0; touchState.r=0; touchState.up=0;
+  const kn=$('#tknob'); if(kn) kn.style.transform='translate(0,0)';
+  const st=$('#tstick'); if(st) st.classList.remove('hot');
+}
+function tDown(id,x,y,target){
+  const st=$('#tstick'), r=st&&st.getBoundingClientRect();
+  const onStick=r&&r.width&&x>=r.left-TSLOP&&x<=r.right+TSLOP&&y>=r.top-TSLOP&&y<=r.bottom+TSLOP;
+  if(onStick&&!Object.values(FINGERS).includes('stick')){
+    FINGERS[id]='stick'; st.classList.add('hot'); stickMove(x,y);
+  } else {
+    const p=tHit(x,y); if(!p) return false;
+    FINGERS[id]=p; tPress(p,1); Snd.resume&&Snd.resume();
+  }
+  if(target&&target.setPointerCapture) try{ target.setPointerCapture(id) }catch(e){}
+  return true;
+}
+function tMove(id,x,y){
+  const cur=FINGERS[id]; if(cur===undefined) return false;
+  if(cur==='stick'){ stickMove(x,y); return true }
+  const p=tHit(x,y);
+  if(p!==cur){ tPress(cur,0); if(p) tPress(p,1); FINGERS[id]=p||'' }
+  return true;
+}
+function tUp(id){
+  const cur=FINGERS[id]; if(cur===undefined) return;
+  if(cur==='stick') stickOff(); else tPress(cur,0);
+  delete FINGERS[id];
+}
+function tWipe(){ for(const id in FINGERS) tUp(id); stickOff() }
+(function bindPad(){
+  const pad=$('#touch'); if(!pad) return;
+  const stop=e=>{ if(e.cancelable) e.preventDefault() };
+  if(window.PointerEvent){
+    pad.addEventListener('pointerdown',e=>{ if(tDown(e.pointerId,e.clientX,e.clientY,e.target)) stop(e) },{passive:false});
+    pad.addEventListener('pointermove',e=>{ if(tMove(e.pointerId,e.clientX,e.clientY)) stop(e) },{passive:false});
+    ['pointerup','pointercancel'].forEach(ev=>pad.addEventListener(ev,e=>{ tUp(e.pointerId); stop(e) },{passive:false}));
+  } else {
+    const each=(e,fn)=>{ for(const t of e.changedTouches) fn(t.identifier,t.clientX,t.clientY,e.target) };
+    pad.addEventListener('touchstart',e=>{ let any=false; each(e,(i,x,y,t)=>{ if(tDown(i,x,y,t)) any=true }); if(any) stop(e) },{passive:false});
+    pad.addEventListener('touchmove',e=>{ let any=false; each(e,(i,x,y)=>{ if(tMove(i,x,y)) any=true }); if(any) stop(e) },{passive:false});
+    ['touchend','touchcancel'].forEach(ev=>pad.addEventListener(ev,e=>{ each(e,i=>tUp(i)); stop(e) },{passive:false}));
+    pad.addEventListener('mousedown',e=>{ if(tDown('m',e.clientX,e.clientY,e.target)) stop(e) });
+    pad.addEventListener('mousemove',e=>{ tMove('m',e.clientX,e.clientY) });
+    ['mouseup','mouseleave'].forEach(ev=>pad.addEventListener(ev,()=>tUp('m')));
+  }
+  /* a rotated phone or a hidden pad must never leave a button stuck down */
+  addEventListener('orientationchange',tWipe);
+  addEventListener('blur',tWipe);
+})();
 
 const ATTACK_REACH=170, ATTACK_HEIGHT=132;
 const SUPER_CHARGES=5, SUPER_TIME=120, FLY_TOP=46;   /* super jump: 5 flights, ~2 s each */
@@ -30,6 +110,7 @@ function shakeIt(n){ shake=Math.max(shake,n) }
 function clearKeys(){
   for(const k in K) K[k]=0;
   for(const k in touchState) touchState[k]=0;
+  tWipe();
   prevE=prevA=prevQ=prevS=1;
 }
 /* if anything ever throws mid-question, unstick the level instead of freezing it */
@@ -120,7 +201,24 @@ function hud(){
   $('#superbox').style.opacity=LV.superLeft?1:.45;
   const ts=$('#ts'); if(ts) ts.classList.toggle('empty',!LV.superLeft);
 }
+/* how high the pad sits and how big it is — two taps in Settings, because every tablet
+   and every pair of thumbs wants something different */
+const PAD_LIFT={low:24,mid:58,high:96,huge:140};
+const PAD_SIZE={s:.85,m:1,l:1.18,xl:1.36};
+function applyPadStyle(){
+  const pad=$('#touch'); if(!pad) return;
+  let lift=PAD_LIFT[S.settings.lift]||PAD_LIFT.mid, sc=PAD_SIZE[S.settings.tsize]||1;
+  /* a phone held sideways has very little height — shrink and drop the pad so it never
+     covers the level, unless the player asked for big buttons on purpose */
+  const h=window.innerHeight||540;
+  if(h<470){ sc=Math.min(sc,.82); lift=Math.min(lift,20) }
+  else if(h<560){ sc=Math.min(sc,.94); lift=Math.min(lift,40) }
+  pad.style.setProperty('--tlift','calc('+lift+'px + env(safe-area-inset-bottom))');
+  pad.style.setProperty('--tscale',sc);
+}
+addEventListener('resize',()=>{ applyPadStyle(); tWipe() });
 function updateTouchVisibility(){
+  applyPadStyle();
   const touch = S.settings.touch==='on' || (S.settings.touch==='auto' && ((window.matchMedia&&matchMedia('(pointer:coarse)').matches)||innerWidth<820));
   $('#touch').classList.toggle('on',touch);
 }
@@ -139,10 +237,15 @@ function movePlayer(dt){
   const speed=3.9*(boots==='boots-speed'?1.25:1);
   const jump=-14.4*(boots==='boots-jump'?1.14:1)*(LV.jumpT>0?Math.sqrt(LV.jumpMult):1);   /* jumpMult = how much higher, not how much faster */
   let ix=0;
-  if(K.KeyA||K.ArrowLeft||touchState.l) ix=-1;
-  if(K.KeyD||K.ArrowRight||touchState.r) ix=1;
-  P.vx=ix*speed; if(ix) P.face=ix;
-  const wantJump=K.Space||K.KeyW||K.ArrowUp||touchState.j;
+  if(K.KeyA||K.ArrowLeft) ix=-1;
+  if(K.KeyD||K.ArrowRight) ix=1;
+  /* the stick is analog: a light push walks, a full push runs — but a key is always full speed */
+  if(!ix&&touchState.ax){
+    const m=Math.abs(touchState.ax);
+    if(m>.18) ix=Math.sign(touchState.ax)*(.5+.5*Math.min(1,(m-.18)/.5));
+  }
+  P.vx=ix*speed; if(ix) P.face=ix>0?1:-1;
+  const wantJump=K.Space||K.KeyW||K.ArrowUp||touchState.j||touchState.up;
   if(wantJump&&P.ground&&P.fly<=0){ P.vy=jump; P.ground=false; Snd.jump(); }
   if(P.fly>0){
     /* super jump: shoot up to the top of the screen, then hover for the rest of the time */
@@ -192,7 +295,7 @@ function burst(x,y,c,n=10){ for(let i=0;i<n;i++) particles.push({x,y,vx:(Math.ra
 function addCoins(n,x,y){
   const dbl=LV.boosts.coins>0&&LV.doubleNext; if(dbl){LV.doubleNext=false; n*=2}
   LV.coins+=n; S.stats.totalCoins+=n; daily('d-coin',n);
-  if(NET.on&&NET.mate){ if(NET.mode==='coop') NET.send({t:'ev',k:'coin',n}); netStat(); }
+  if(NET.on&&NET.mate){ if(NET.mode==='coop') netCoin(n); netStat(); }
   addFloat(x||P.x,y||P.y,'+'+n+'🪙','#FFC84A'); Snd.coin(); hud(); save();
 }
 
