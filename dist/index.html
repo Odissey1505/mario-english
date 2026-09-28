@@ -118,17 +118,37 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
 /* touch controls */
 #touch{position:absolute;inset:0;pointer-events:none;display:none}
 #touch.on{display:block}
-.tb{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));width:62px;height:62px;border-radius:50%;
-  background:rgba(124,92,255,.30);border:2px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:22px;pointer-events:auto;user-select:none}
-.tb:active{background:rgba(124,92,255,.6)}
-#tl{left:14px}#tr{left:88px}
-#tj{right:14px;background:rgba(56,225,200,.30)}
-#ta{right:88px;background:rgba(255,92,122,.30)}
-#te{right:14px;bottom:calc(90px + env(safe-area-inset-bottom));width:52px;height:52px;font-size:17px}
-#tq{right:88px;bottom:calc(90px + env(safe-area-inset-bottom));width:52px;height:52px;font-size:17px;background:rgba(255,200,74,.28)}
-#ts{right:14px;bottom:calc(160px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:22px;
+/* every control sits on its own bottom step, all measured from --tlift so the whole
+   cluster can be raised at once, and none of them may scroll, zoom or select on a tap */
+#touch{--tlift:calc(58px + env(safe-area-inset-bottom));--tscale:1}
+#touch *{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;user-select:none}
+.tb{position:absolute;bottom:var(--tlift);width:calc(76px * var(--tscale));height:calc(76px * var(--tscale));border-radius:50%;
+  background:rgba(124,92,255,.30);border:2px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:26px;pointer-events:auto;user-select:none;
+  transition:transform .06s,background .06s}
+.tb.hot{background:rgba(124,92,255,.62);transform:scale(.93)}
+#tj{right:14px;width:calc(104px * var(--tscale));height:calc(104px * var(--tscale));font-size:calc(38px * var(--tscale));background:rgba(56,225,200,.32);border-color:rgba(56,225,200,.6)}
+#tj.hot{background:rgba(56,225,200,.68)}
+#ta{right:calc(126px * var(--tscale));width:calc(84px * var(--tscale));height:calc(84px * var(--tscale));font-size:calc(30px * var(--tscale));background:rgba(255,92,122,.30)}
+#ta.hot{background:rgba(255,92,122,.62)}
+#te{right:14px;bottom:calc(var(--tlift) + 118px * var(--tscale));width:calc(62px * var(--tscale));height:calc(62px * var(--tscale));font-size:20px}
+#tq{right:calc(90px * var(--tscale));bottom:calc(var(--tlift) + 118px * var(--tscale));width:calc(62px * var(--tscale));height:calc(62px * var(--tscale));font-size:20px;background:rgba(255,200,74,.28)}
+#tq.hot{background:rgba(255,200,74,.62)}
+#ts{right:14px;bottom:calc(var(--tlift) + 192px * var(--tscale));width:calc(68px * var(--tscale));height:calc(68px * var(--tscale));font-size:26px;
   background:rgba(255,92,122,.34);border-color:rgba(255,200,74,.7)}
 #ts.empty{opacity:.35}
+/* the movement stick: a big base you can grab anywhere inside, with a knob that follows the thumb */
+#tstick{position:absolute;left:14px;bottom:var(--tlift);width:calc(168px * var(--tscale));height:calc(168px * var(--tscale));border-radius:50%;pointer-events:auto;
+  background:radial-gradient(circle at 50% 50%,rgba(124,92,255,.16),rgba(124,92,255,.26));
+  border:2px solid rgba(255,255,255,.22);display:grid;place-items:center}
+#tstick .ring{position:absolute;width:56%;height:56%;border-radius:50%;border:2px dashed rgba(255,255,255,.16)}
+#tstick .knob{position:absolute;width:calc(74px * var(--tscale));height:calc(74px * var(--tscale));border-radius:50%;
+  background:radial-gradient(circle at 38% 34%,rgba(255,255,255,.55),rgba(124,92,255,.75));
+  border:2px solid rgba(255,255,255,.5);box-shadow:0 6px 18px rgba(0,0,0,.35);
+  transform:translate(0,0);transition:transform .05s linear}
+#tstick.hot{border-color:rgba(255,255,255,.45)}
+#tstick.hot .knob{transition:none}
+#tstick .ar{position:absolute;font-size:16px;color:rgba(255,255,255,.45);pointer-events:none}
+#tstick .ar.l{left:10px}#tstick .ar.r{right:10px}
 
 /* ---------- modals ---------- */
 .modal{position:fixed;inset:0;background:rgba(8,5,22,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
@@ -312,7 +332,7 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
   <div class="bossbar" id="bossbar"><div class="n" id="bossname">BOSS</div><div class="bar"><i class="fill" id="bossfill" style="width:100%"></i></div></div>
   <div class="hud" style="top:auto;bottom:8px;justify-content:center;pointer-events:none"><div class="streak" id="streak"></div></div>
   <div id="touch">
-    <div class="tb" id="tl">◀</div><div class="tb" id="tr">▶</div>
+    <div id="tstick"><i class="ring"></i><i class="knob" id="tknob"></i><i class="ar l">◀</i><i class="ar r">▶</i></div>
     <div class="tb" id="tj">⤴</div><div class="tb" id="ta">⚔</div>
     <div class="tb" id="te">E</div><div class="tb" id="tq">Q</div>
     <div class="tb" id="ts">🚀</div>
@@ -1420,7 +1440,7 @@ function mkBoss(W,diff,x){
    6. GAME ENGINE
    ===================================================================== */
 const CV=$('#cv'), CX=CV.getContext('2d');
-const K={}; let touchState={l:0,r:0,j:0,a:0,e:0,q:0,s:0};
+const K={}; let touchState={l:0,r:0,j:0,a:0,e:0,q:0,s:0,up:0,ax:0};
 const typing=e=>{ const t=e.target; return t&&(/^(INPUT|TEXTAREA)$/.test(t.tagName)||t.isContentEditable) };
 addEventListener('keydown',e=>{
   if(typing(e)) return;                    /* typing an answer — spaces and letters belong to the field */
@@ -1429,13 +1449,93 @@ addEventListener('keydown',e=>{
   if(e.code==='Escape'&&$('#s-game').classList.contains('on')) togglePause();
 });
 addEventListener('keyup',e=>{ if(typing(e)) return; K[e.code]=0 });
-function bindTouch(id,prop){ const el=$('#'+id);
-  const on=e=>{e.preventDefault(); touchState[prop]=1}, off=e=>{e.preventDefault(); touchState[prop]=0};
-  el.addEventListener('touchstart',on,{passive:false}); el.addEventListener('touchend',off,{passive:false});
-  el.addEventListener('touchcancel',off,{passive:false});
-  el.addEventListener('mousedown',on); el.addEventListener('mouseup',off); el.addEventListener('mouseleave',off);
+/* ---------- touch controls ----------
+   One tracker for the whole pad instead of a listener per button. A finger is followed
+   from the moment it lands until it lifts, so sliding from one button to the next works,
+   a thumb that drifts off a button releases it, and the stick keeps reporting while the
+   finger travels outside the base. That following is what "weak response" was missing. */
+const TBTNS=[['tj','j'],['ta','a'],['te','e'],['tq','q'],['ts','s']];
+const TSLOP=14;                       /* a little forgiveness around each circle */
+const FINGERS={};                     /* pointer/touch id → the button it holds, or 'stick' */
+function tPress(prop,on){
+  if(!prop||prop==='stick') return;
+  touchState[prop]=on?1:0;
+  const hit=TBTNS.find(b=>b[1]===prop); const el=hit&&$('#'+hit[0]);
+  if(el) el.classList.toggle('hot',!!on);
 }
-['tl:l','tr:r','tj:j','ta:a','te:e','tq:q','ts:s'].forEach(s=>{const [a,b]=s.split(':');bindTouch(a,b)});
+function tHit(x,y){
+  for(const [id,prop] of TBTNS){
+    const el=$('#'+id); if(!el) continue;
+    const r=el.getBoundingClientRect(); if(!r.width) continue;
+    const dx=x-(r.left+r.width/2), dy=y-(r.top+r.height/2), rad=r.width/2+TSLOP;
+    if(dx*dx+dy*dy<=rad*rad) return prop;
+  }
+  return null;
+}
+function stickMove(x,y){
+  const el=$('#tstick'); if(!el) return;
+  const r=el.getBoundingClientRect(); if(!r.width) return;
+  const max=r.width*.42;
+  let dx=x-(r.left+r.width/2), dy=y-(r.top+r.height/2);
+  const d=Math.hypot(dx,dy);
+  if(d>max){ dx*=max/d; dy*=max/d }
+  const kn=$('#tknob'); if(kn) kn.style.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)';
+  touchState.ax=clamp(dx/max,-1,1);
+  const ay=clamp(dy/max,-1,1);
+  touchState.l=touchState.ax<-.18?1:0;
+  touchState.r=touchState.ax>.18?1:0;
+  touchState.up=ay<-.55?1:0;          /* pushing the stick up jumps, as on a gamepad */
+}
+function stickOff(){
+  touchState.ax=0; touchState.l=0; touchState.r=0; touchState.up=0;
+  const kn=$('#tknob'); if(kn) kn.style.transform='translate(0,0)';
+  const st=$('#tstick'); if(st) st.classList.remove('hot');
+}
+function tDown(id,x,y,target){
+  const st=$('#tstick'), r=st&&st.getBoundingClientRect();
+  const onStick=r&&r.width&&x>=r.left-TSLOP&&x<=r.right+TSLOP&&y>=r.top-TSLOP&&y<=r.bottom+TSLOP;
+  if(onStick&&!Object.values(FINGERS).includes('stick')){
+    FINGERS[id]='stick'; st.classList.add('hot'); stickMove(x,y);
+  } else {
+    const p=tHit(x,y); if(!p) return false;
+    FINGERS[id]=p; tPress(p,1); Snd.resume&&Snd.resume();
+  }
+  if(target&&target.setPointerCapture) try{ target.setPointerCapture(id) }catch(e){}
+  return true;
+}
+function tMove(id,x,y){
+  const cur=FINGERS[id]; if(cur===undefined) return false;
+  if(cur==='stick'){ stickMove(x,y); return true }
+  const p=tHit(x,y);
+  if(p!==cur){ tPress(cur,0); if(p) tPress(p,1); FINGERS[id]=p||'' }
+  return true;
+}
+function tUp(id){
+  const cur=FINGERS[id]; if(cur===undefined) return;
+  if(cur==='stick') stickOff(); else tPress(cur,0);
+  delete FINGERS[id];
+}
+function tWipe(){ for(const id in FINGERS) tUp(id); stickOff() }
+(function bindPad(){
+  const pad=$('#touch'); if(!pad) return;
+  const stop=e=>{ if(e.cancelable) e.preventDefault() };
+  if(window.PointerEvent){
+    pad.addEventListener('pointerdown',e=>{ if(tDown(e.pointerId,e.clientX,e.clientY,e.target)) stop(e) },{passive:false});
+    pad.addEventListener('pointermove',e=>{ if(tMove(e.pointerId,e.clientX,e.clientY)) stop(e) },{passive:false});
+    ['pointerup','pointercancel'].forEach(ev=>pad.addEventListener(ev,e=>{ tUp(e.pointerId); stop(e) },{passive:false}));
+  } else {
+    const each=(e,fn)=>{ for(const t of e.changedTouches) fn(t.identifier,t.clientX,t.clientY,e.target) };
+    pad.addEventListener('touchstart',e=>{ let any=false; each(e,(i,x,y,t)=>{ if(tDown(i,x,y,t)) any=true }); if(any) stop(e) },{passive:false});
+    pad.addEventListener('touchmove',e=>{ let any=false; each(e,(i,x,y)=>{ if(tMove(i,x,y)) any=true }); if(any) stop(e) },{passive:false});
+    ['touchend','touchcancel'].forEach(ev=>pad.addEventListener(ev,e=>{ each(e,i=>tUp(i)); stop(e) },{passive:false}));
+    pad.addEventListener('mousedown',e=>{ if(tDown('m',e.clientX,e.clientY,e.target)) stop(e) });
+    pad.addEventListener('mousemove',e=>{ tMove('m',e.clientX,e.clientY) });
+    ['mouseup','mouseleave'].forEach(ev=>pad.addEventListener(ev,()=>tUp('m')));
+  }
+  /* a rotated phone or a hidden pad must never leave a button stuck down */
+  addEventListener('orientationchange',tWipe);
+  addEventListener('blur',tWipe);
+})();
 
 const ATTACK_REACH=170, ATTACK_HEIGHT=132;
 const SUPER_CHARGES=5, SUPER_TIME=120, FLY_TOP=46;   /* super jump: 5 flights, ~2 s each */
@@ -1448,6 +1548,7 @@ function shakeIt(n){ shake=Math.max(shake,n) }
 function clearKeys(){
   for(const k in K) K[k]=0;
   for(const k in touchState) touchState[k]=0;
+  tWipe();
   prevE=prevA=prevQ=prevS=1;
 }
 /* if anything ever throws mid-question, unstick the level instead of freezing it */
@@ -1538,7 +1639,24 @@ function hud(){
   $('#superbox').style.opacity=LV.superLeft?1:.45;
   const ts=$('#ts'); if(ts) ts.classList.toggle('empty',!LV.superLeft);
 }
+/* how high the pad sits and how big it is — two taps in Settings, because every tablet
+   and every pair of thumbs wants something different */
+const PAD_LIFT={low:24,mid:58,high:96,huge:140};
+const PAD_SIZE={s:.85,m:1,l:1.18,xl:1.36};
+function applyPadStyle(){
+  const pad=$('#touch'); if(!pad) return;
+  let lift=PAD_LIFT[S.settings.lift]||PAD_LIFT.mid, sc=PAD_SIZE[S.settings.tsize]||1;
+  /* a phone held sideways has very little height — shrink and drop the pad so it never
+     covers the level, unless the player asked for big buttons on purpose */
+  const h=window.innerHeight||540;
+  if(h<470){ sc=Math.min(sc,.82); lift=Math.min(lift,20) }
+  else if(h<560){ sc=Math.min(sc,.94); lift=Math.min(lift,40) }
+  pad.style.setProperty('--tlift','calc('+lift+'px + env(safe-area-inset-bottom))');
+  pad.style.setProperty('--tscale',sc);
+}
+addEventListener('resize',()=>{ applyPadStyle(); tWipe() });
 function updateTouchVisibility(){
+  applyPadStyle();
   const touch = S.settings.touch==='on' || (S.settings.touch==='auto' && ((window.matchMedia&&matchMedia('(pointer:coarse)').matches)||innerWidth<820));
   $('#touch').classList.toggle('on',touch);
 }
@@ -1557,10 +1675,15 @@ function movePlayer(dt){
   const speed=3.9*(boots==='boots-speed'?1.25:1);
   const jump=-14.4*(boots==='boots-jump'?1.14:1)*(LV.jumpT>0?Math.sqrt(LV.jumpMult):1);   /* jumpMult = how much higher, not how much faster */
   let ix=0;
-  if(K.KeyA||K.ArrowLeft||touchState.l) ix=-1;
-  if(K.KeyD||K.ArrowRight||touchState.r) ix=1;
-  P.vx=ix*speed; if(ix) P.face=ix;
-  const wantJump=K.Space||K.KeyW||K.ArrowUp||touchState.j;
+  if(K.KeyA||K.ArrowLeft) ix=-1;
+  if(K.KeyD||K.ArrowRight) ix=1;
+  /* the stick is analog: a light push walks, a full push runs — but a key is always full speed */
+  if(!ix&&touchState.ax){
+    const m=Math.abs(touchState.ax);
+    if(m>.18) ix=Math.sign(touchState.ax)*(.5+.5*Math.min(1,(m-.18)/.5));
+  }
+  P.vx=ix*speed; if(ix) P.face=ix>0?1:-1;
+  const wantJump=K.Space||K.KeyW||K.ArrowUp||touchState.j||touchState.up;
   if(wantJump&&P.ground&&P.fly<=0){ P.vy=jump; P.ground=false; Snd.jump(); }
   if(P.fly>0){
     /* super jump: shoot up to the top of the screen, then hover for the rest of the time */
@@ -1610,7 +1733,7 @@ function burst(x,y,c,n=10){ for(let i=0;i<n;i++) particles.push({x,y,vx:(Math.ra
 function addCoins(n,x,y){
   const dbl=LV.boosts.coins>0&&LV.doubleNext; if(dbl){LV.doubleNext=false; n*=2}
   LV.coins+=n; S.stats.totalCoins+=n; daily('d-coin',n);
-  if(NET.on&&NET.mate){ if(NET.mode==='coop') NET.send({t:'ev',k:'coin',n}); netStat(); }
+  if(NET.on&&NET.mate){ if(NET.mode==='coop') netCoin(n); netStat(); }
   addFloat(x||P.x,y||P.y,'+'+n+'🪙','#FFC84A'); Snd.coin(); hud(); save();
 }
 
@@ -2636,7 +2759,7 @@ class Realtime{
 
 const NET={
   on:false, role:'', code:'', mode:'race', rt:null, plan:null,
-  mate:null, mateState:null, lastSend:0, status:'', lastHeard:0, hiTimer:null,
+  mate:null, mateState:null, lastSend:0, lastSig:'', buf:[], gap:120, status:'', lastHeard:0, hiTimer:null,
   results:{}, pendingHelp:null, helpFor:null,
   me(){ return {name:S.name||'Player', avatar:S.avatar||'🦊', hero:S.hero} },
   log(m){ this.status=m; if($('#s-online').classList.contains('on')) renderOnline() },
@@ -2644,7 +2767,7 @@ const NET={
     const cfg=netCfg();
     if(!cfg.url||!cfg.key){ toast('Add a Supabase link and key in Server settings'); return false }
     this.log('Connecting…');
-    this.code=code; this.role=role; this.mode=mode; this.mate=null; this.mateState=null; this.results={};
+    this.code=code; this.role=role; this.mode=mode; this.mate=null; this.mateState=null; this.buf=[]; this.results={};
     this.rt=new Realtime(realtimeURL(cfg.url,cfg.key),'cow-'+code);
     this.rt.onEvent=m=>this.onMsg(m);
     this.rt.onState=st=>{ if(st==='closed'&&this.on){ this.on=false; this.mate=null;
@@ -2657,7 +2780,7 @@ const NET={
     this.hiTimer=setInterval(()=>{
       if(!this.on) return;
       this.send({t:'hi',role:this.role,...this.me()});
-      if(this.mate&&Date.now()-this.lastHeard>7000){ this.mate=null; this.mateState=null;
+      if(this.mate&&Date.now()-this.lastHeard>7000){ this.mate=null; this.mateState=null; this.buf=[];
         this.log('Your partner left the room.'); toast('Your partner left — carry on solo'); hud() }
     },2000);
     this.send({t:'hi',role:this.role,...this.me()});
@@ -2666,7 +2789,7 @@ const NET={
   },
   leave(){ try{ this.send({t:'bye'}) }catch(e){}
     clearInterval(this.hiTimer); if(this.rt) this.rt.close();
-    this.on=false; this.rt=null; this.mate=null; this.mateState=null; this.code=''; this.results={};
+    this.on=false; this.rt=null; this.mate=null; this.mateState=null; this.buf=[]; this.code=''; this.results={};
     const mb=$('#mate'); if(mb) mb.style.display='none'; this.log(''); },
   send(m){ if(this.on&&this.rt) this.rt.send(m) },
   onMsg(m){
@@ -2694,16 +2817,18 @@ const NET={
         toast('Host started the level'); startLevel(m.world,m.diff,{seed:m.seed});
         break;
       case 'lobby':                                /* the host tells the room what will be played */
-        NET.plan={tv:m.tv,tg:m.tg,diff:m.diff,names:m.names};
+        NET.plan={tv:m.tv,tg:m.tg,diff:m.diff,names:m.names,o:m.o};
+        /* the host owns the task format too, so the guest already plays by it in the lobby */
+        if(m.o) S.opts={emoji:m.o.emoji!==false, answer:m.o.answer||'mixed'};
         if($('#s-online').classList.contains('on')) renderOnline();
         break;
-      case 'pos': NET.mateState=Object.assign(NET.mateState||{},m); break;
+      case 'pos': netPos(m); break;
       case 'stat': NET.mateState=Object.assign(NET.mateState||{},m); hud(); break;
       case 'ev': netEvent(m); break;
       case 'help': netHelpRequest(m); break;
       case 'helped': netHelped(m); break;
       case 'fin': NET.results.mate=m; netCheckFinish(); break;
-      case 'bye': NET.mate=null; NET.mateState=null; toast('Your partner left'); hud(); break;
+      case 'bye': NET.mate=null; NET.mateState=null; NET.buf=[]; toast('Your partner left'); hud(); break;
     }
   }
 };
@@ -2748,36 +2873,135 @@ function askPartner(q){
     setTimeout(()=>{ if(NET.pendingHelp&&NET.pendingHelp.id===id){ NET.pendingHelp=null; res(false) } },13000);
   });
 }
+/* ---- the partner's position, smoothed ----
+   Packets arrive every ~100 ms and the screen draws every ~16 ms, so painting the
+   last packet where it landed makes the partner stand still and then teleport.
+   Instead every packet is stamped with its arrival time and the ghost is drawn
+   slightly in the past, gliding between the two samples that surround that moment. */
+const MATE_DELAY=130;        /* how far behind live we render, in ms */
+const MATE_EXTRA=200;        /* how long we may guess ahead after a missed packet */
+function netPos(m){
+  NET.mateState=Object.assign(NET.mateState||{},m);
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  const b=NET.buf, last=b[b.length-1];
+  if(last){ const d=now-last.t; if(d>30&&d<2000) NET.gap=NET.gap*.7+d*.3 }   /* learn the real rate */
+  b.push({t:now,x:m.x,y:m.y,d:m.d,f:m.f,b:m.b,fly:m.fly});
+  if(b.length>6) b.shift();
+}
+function mateAt(now){
+  const b=NET.buf; if(!b.length) return null;
+  const newest=b[b.length-1];
+  const age=now-newest.t;
+  /* nothing for a while: stop guessing, park the ghost and say so */
+  if(age>1200) return {x:newest.x,y:newest.y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:age};
+  const want=now-Math.max(MATE_DELAY,NET.gap*1.3);
+  if(want>=newest.t){                                    /* ahead of the last packet: glide on */
+    const prev=b[b.length-2];
+    let x=newest.x, y=newest.y;
+    if(prev&&newest.t>prev.t){
+      const k=Math.min(want-newest.t,MATE_EXTRA)/(newest.t-prev.t);
+      x+=(newest.x-prev.x)*k; y+=(newest.y-prev.y)*k;
+    }
+    return {x,y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:0};
+  }
+  for(let i=b.length-1;i>0;i--){
+    const a=b[i-1], z=b[i];
+    if(want>=a.t&&want<=z.t){
+      const k=(want-a.t)/Math.max(1,z.t-a.t);
+      if(Math.abs(z.x-a.x)>260||Math.abs(z.y-a.y)>260)     /* a real jump (respawn, new level): snap */
+        return {x:z.x,y:z.y,d:z.d,f:z.f,busy:z.b,fly:z.fly,stale:0};
+      return {x:a.x+(z.x-a.x)*k, y:a.y+(z.y-a.y)*k, d:z.d, f:k>.5?z.f:a.f, busy:z.b, fly:z.fly, stale:0};
+    }
+  }
+  const o=b[0];
+  return {x:o.x,y:o.y,d:o.d,f:o.f,busy:o.b,fly:o.fly,stale:0};
+}
 /* ---- the partner's character, drawn as a translucent ghost ---- */
 function drawMate(c){
-  const m=NET.mateState; if(!m||m.x==null) return;
-  c.save(); c.globalAlpha=NET.mode==='coop'?.9:.5;
-  const H=heroSheet(m.hero||'azure');
+  const st=NET.mateState; if(!st||st.x==null) return;
+  const now=(window.performance&&performance.now)?performance.now():Date.now();
+  const m=mateAt(now); if(!m) return;
+  c.save(); c.globalAlpha=(NET.mode==='coop'?.9:.5)*(m.stale?.55:1);
+  const H=heroSheet(st.hero||'azure');
   const fy=m.y+P.h, cx=m.x+P.w/2;
   c.fillStyle='rgba(0,0,0,.2)'; c.beginPath(); c.ellipse(cx,fy+3,P.w*.5,5,0,0,7); c.fill();
+  if(m.fly){                                        /* the partner is mid super jump */
+    const g=c.createRadialGradient(cx,m.y+P.h/2,4,cx,m.y+P.h/2,40);
+    g.addColorStop(0,'rgba(120,230,255,.35)'); g.addColorStop(1,'rgba(120,230,255,0)');
+    c.fillStyle=g; c.beginPath(); c.arc(cx,m.y+P.h/2,40,0,7); c.fill();
+  }
   if(H){ const f=H.meta[m.f]||H.meta.idle, sc=H.s;
     c.save(); c.translate(cx,fy); c.scale(m.d||1,1);
     c.drawImage(H.img,f[0],f[1],f[2],f[3],-f[4]*sc,-(f[5]+1)*sc,f[2]*sc,f[3]*sc); c.restore(); }
   else { c.fillStyle='#38E1C8'; rr(c,m.x,m.y,P.w,P.h,8); c.fill() }
   c.globalAlpha=1;
+  /* say out loud why the partner is not moving, so a pause never reads as a bug */
+  if(m.busy){
+    const by=m.y-26, bw=62;
+    c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-bw/2,by-14,bw,20,9); c.fill();
+    c.fillStyle='#FFE08A'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
+    c.fillText('💭 thinking',cx,by);
+  } else if(m.stale){
+    c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-26,m.y-40,52,20,9); c.fill();
+    c.fillStyle='#FF9EB5'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
+    c.fillText('📶 '+(m.stale/1000).toFixed(1)+'s',cx,m.y-26);
+  }
   c.font='bold 12px Rubik,sans-serif'; c.textAlign='center';
-  c.fillStyle='rgba(0,0,0,.5)'; c.fillText((m.a||'🙂')+' '+(m.nm||'Partner'),cx+1,m.y-9);
-  c.fillStyle=NET.mode==='coop'?'#38E1C8':'#FFC84A'; c.fillText((m.a||'🙂')+' '+(m.nm||'Partner'),cx,m.y-10);
+  c.fillStyle='rgba(0,0,0,.5)'; c.fillText((st.a||'🙂')+' '+(st.nm||'Partner'),cx+1,m.y-9);
+  c.fillStyle=NET.mode==='coop'?'#38E1C8':'#FFC84A'; c.fillText((st.a||'🙂')+' '+(st.nm||'Partner'),cx,m.y-10);
   c.textAlign='left'; c.restore();
 }
 function netTick(){
   if(!NET.on||!NET.mate||!LV) return;
   const now=performance.now();
-  if(now-NET.lastSend<70) return; NET.lastSend=now;
+  netLinkBadge(now);
+  /* 10 packets a second: Supabase Realtime throttles a channel at that rate by default,
+     and going over it is what turns a smooth partner into a stuttering one. */
+  if(now-NET.lastSend<100) return;
   const me=NET.me();
   const H=heroSheet(S.hero);
-  NET.send({t:'pos',x:Math.round(P.x),y:Math.round(P.y),d:P.face,f:heroFrame(H&&H.meta),
-            hero:me.hero,nm:me.name,a:me.avatar});
+  const msg={t:'pos',x:Math.round(P.x),y:Math.round(P.y),d:P.face,f:heroFrame(H&&H.meta),
+             b:LV.busy?1:0, fly:P.fly>0?1:0,
+             hero:me.hero,nm:me.name,a:me.avatar};
+  /* while nothing moves (a question is open, the hero stands still) one packet every
+     600 ms is enough to say "still here" — the rest of the budget stays for real motion */
+  const sig=msg.x+','+msg.y+','+msg.d+','+msg.f+','+msg.b;
+  if(sig===NET.lastSig&&now-NET.lastSend<600) return;
+  NET.lastSig=sig; NET.lastSend=now;
+  msg.ts=Math.round(now);
+  NET.send(msg);
 }
+/* the small 🌐 box in the HUD turns into a warning when packets stop arriving */
+function netLinkBadge(now){
+  const mb=$('#mate'); if(!mb) return;
+  const b=NET.buf, age=b.length?now-b[b.length-1].t:9999;
+  const bad=age>900;
+  if(mb.dataset.bad!==(bad?'1':'0')){
+    mb.dataset.bad=bad?'1':'0';
+    mb.style.color=bad?'#FF9EB5':'';
+    mb.style.borderColor=bad?'rgba(255,158,181,.6)':'';
+    mb.title=bad?'The partner’s data is late — a weak connection or a slow room':'Link is healthy';
+  }
+}
+/* a row of coins collected in one run becomes a single shared-coins packet */
+let coinPend=0, coinTimer=0;
+function netCoin(n){
+  coinPend+=n;
+  if(coinTimer) return;
+  coinTimer=setTimeout(()=>{ const k=coinPend; coinPend=0; coinTimer=0;
+    if(k&&NET.on&&NET.mate) NET.send({t:'ev',k:'coin',n:k}); },400);
+}
+/* score updates ride on the same budget as movement: picking up a row of coins used to
+   fire one packet per coin, which is exactly what pushes the channel over its limit */
+let statTimer=0;
 function netStat(){
   if(!NET.on||!NET.mate||!LV) return;
-  NET.send({t:'stat',coins:LV.coins,hearts:LV.hearts,ok:LV.stats.ok,bad:LV.stats.bad,
-            prog:Math.round(P.x/LV.w*100)});
+  if(statTimer) return;
+  statTimer=setTimeout(()=>{ statTimer=0;
+    if(!NET.on||!NET.mate||!LV) return;
+    NET.send({t:'stat',coins:LV.coins,hearts:LV.hearts,ok:LV.stats.ok,bad:LV.stats.bad,
+              prog:Math.round(P.x/LV.w*100)});
+  },400);
 }
 function netCheckFinish(){
   if(!NET.results.me||!NET.results.mate) return;
@@ -2814,7 +3038,7 @@ function planNames(){
 }
 function sendPlan(){
   if(!NET.on||NET.role!=='host') return;
-  NET.send({t:'lobby',tv:SESSION.topics.v,tg:SESSION.topics.g,diff:SESSION.diff,names:planNames()});
+  NET.send({t:'lobby',tv:SESSION.topics.v,tg:SESSION.topics.g,diff:SESSION.diff,names:planNames(),o:opt()});
 }
 /* every lesson of every course, for the quick picker */
 function lessonOptions(){
@@ -2851,6 +3075,13 @@ function hostPlanPanel(){
     '<h3 style="margin:16px 0 8px">Difficulty</h3>'+
     '<div class="row">'+DIFF.map(d=>
       '<button class="pill'+(SESSION.diff===d.id?' gold':'')+'" data-netdiff="'+d.id+'">'+d.n+'</button>').join('')+'</div>'+
+    '<h3 style="margin:16px 0 8px">Which tasks can come up</h3>'+
+    '<div class="row">'+ANSWER_MODES.map(m=>
+      '<button class="pill'+(answerMode()===m.id?' gold':'')+'" data-netam="'+m.id+'" title="'+esc(m.d)+'">'+m.n+'</button>').join('')+'</div>'+
+    '<div class="row" style="margin-top:8px">'+
+      '<button class="pill'+(useEmoji()?' gold':'')+'" data-netem="1">🖼️ Show pictures</button>'+
+      '<button class="pill'+(useEmoji()?'':' gold')+'" data-netem="0">🚫 Words only</button></div>'+
+    '<p class="muted" style="margin-top:8px">'+esc((ANSWER_MODES.find(m=>m.id===answerMode())||ANSWER_MODES[1]).d)+'</p>'+
     '<button class="big-btn" id="net-start" style="margin-top:16px" '+(NET.mate?'':'disabled')+'>▶ Start the level for both</button>'+
     '<p class="muted" style="margin-top:10px">Your partner sees this list straight away and gets exactly the same level.</p></div>';
 }
@@ -2863,6 +3094,9 @@ function guestPlanPanel(){
     '<div class="kv"><span>Vocabulary</span><b>'+fmt(p.names&&p.names.v)+'</b></div>'+
     '<div class="kv"><span>Grammar</span><b>'+fmt(p.names&&p.names.g)+'</b></div>'+
     '<div class="kv"><span>Difficulty</span><b>'+(DIFF[p.diff]?DIFF[p.diff].n:'—')+'</b></div>'+
+    '<div class="kv"><span>Tasks</span><b>'+
+      esc((ANSWER_MODES.find(m=>m.id===((p.o&&p.o.answer)||'mixed'))||ANSWER_MODES[1]).n)+
+      ' · '+((p.o&&p.o.emoji===false)?'words only':'pictures on')+'</b></div>'+
     '<p class="muted">The host chooses for the room. Waiting for them to start.</p></div>';
 }
 function setRoomTopics(v,g){
@@ -2888,6 +3122,14 @@ function wireHostPlan(){
   });
   $$('[data-netdiff]').forEach(b=>b.onclick=()=>{
     SESSION.diff=+b.dataset.netdiff; S.diff=SESSION.diff; save(); sendPlan(); renderOnline();
+  });
+  /* task format: the host decides for the room, and the guest sees it change live */
+  $$('[data-netam]').forEach(b=>b.onclick=()=>{
+    opt().answer=b.dataset.netam; save(); sendPlan(); renderOnline();
+    toast('Tasks: '+(ANSWER_MODES.find(m=>m.id===b.dataset.netam)||{}).n);
+  });
+  $$('[data-netem]').forEach(b=>b.onclick=()=>{
+    opt().emoji=b.dataset.netem==='1'; save(); sendPlan(); renderOnline();
   });
   const full=$('[data-netfull]');
   if(full) full.onclick=()=>{ NET.fromLobby=true; show('topics') };
@@ -3071,7 +3313,7 @@ function renderBrief(){
     '<div class="kv"><span>Coins needed</span><b>🪙 '+D.coins+'</b></div>'+
     '<div class="kv"><span>Vocabulary topics</span><b>'+(SESSION.topics.v.map(t=>WORDBANK[t].n).join(', ')||'—')+'</b></div>'+
     '<div class="kv"><span>Grammar topics</span><b>'+(SESSION.topics.g.map(t=>GRAMMARBANK[t].n).join(', ')||'—')+'</b></div>'+
-    '<p class="muted" style="margin-top:12px">Controls: A/D or ←→ to move, Space to jump, <b>Shift or C for a super jump (5 flights per level)</b>, F to attack, E to interact, Q to use a boost, Esc to pause. Out of coins? Go back to a rune stone 💠 and answer more questions — they never run out. On a phone use the on-screen buttons.</p>';
+    '<p class="muted" style="margin-top:12px">Controls: A/D or ←→ to move, Space to jump, <b>Shift or C for a super jump (5 flights per level)</b>, F to attack, E to interact, Q to use a boost, Esc to pause. Out of coins? Go back to a rune stone 💠 and answer more questions — they never run out.<br><br>On a phone or tablet: the left stick moves (a light push walks, a full push runs, and pushing it <b>up</b> also jumps), ⤴ jumps, ⚔ attacks, 🚀 is the super jump. You can slide your thumb straight from one button to another. Buttons too low or too small? Settings → <b>Button height</b> and <b>Button size</b>.</p>';
   $('#brief-gear').innerHTML=GEAR.filter(g=>S.gear.owned.includes(g.id)).map(g=>
     '<div class="item"><div class="ic">'+g.ic+'</div><h4>'+g.n+'</h4><p>'+g.d+'</p>'+
     '<button class="'+(S.gear.eq[g.slot]===g.id?'eq':'')+'" data-eq="'+g.id+'">'+(S.gear.eq[g.slot]===g.id?'Equipped':'Equip')+'</button></div>').join('')
@@ -3233,6 +3475,10 @@ function renderSettings(){
    '<div class="kv"><span>Music</span><button class="pill" id="set-mus">'+(S.settings.music?'On':'Off')+'</button></div>'+
    '<div class="kv"><span>Volume</span><button class="pill" id="set-vol">'+({off:'Muted',low:'Low',mid:'Medium',high:'High'})[S.settings.volume||'mid']+'</button></div>'+
    '<div class="kv"><span>On-screen buttons</span><button class="pill" id="set-touch">'+({auto:'Auto',on:'Always',off:'Never'})[S.settings.touch]+'</button></div>'+
+   '<div class="kv"><span>Button height</span><button class="pill" id="set-lift">'+
+     ({low:'Low',mid:'Raised',high:'High',huge:'Very high'})[S.settings.lift||'mid']+'</button></div>'+
+   '<div class="kv"><span>Button size</span><button class="pill" id="set-tsize">'+
+     ({s:'Small',m:'Normal',l:'Large',xl:'Extra large'})[S.settings.tsize||'m']+'</button></div>'+
    '<div class="kv"><span>Progress</span><button class="pill" id="set-reset">Reset everything</button></div>'+
    '<p class="muted" style="margin-top:12px">Progress is saved in the localStorage of this browser. Supabase or Firebase can be added later for classes and syncing between devices.</p>';
   $('#set-snd').onclick=()=>{S.settings.sound=!S.settings.sound; save(); renderSettings()};
@@ -3241,6 +3487,10 @@ function renderSettings(){
   $('#set-vol').onclick=()=>{const o=['off','low','mid','high']; S.settings.volume=o[(o.indexOf(S.settings.volume||'mid')+1)%4];
     save(); Snd.setVolume(); Snd.coin(); renderSettings()};
   $('#set-touch').onclick=()=>{const o=['auto','on','off']; S.settings.touch=o[(o.indexOf(S.settings.touch)+1)%3]; save(); updateTouchVisibility(); renderSettings()};
+  $('#set-lift').onclick=()=>{const o=['low','mid','high','huge'];
+    S.settings.lift=o[(o.indexOf(S.settings.lift||'mid')+1)%4]; save(); applyPadStyle(); renderSettings()};
+  $('#set-tsize').onclick=()=>{const o=['s','m','l','xl'];
+    S.settings.tsize=o[(o.indexOf(S.settings.tsize||'m')+1)%4]; save(); applyPadStyle(); renderSettings()};
   $('#set-reset').onclick=()=>{ if(confirm('Reset all progress?')){ localStorage.removeItem(KEY); S=load(); renderSettings(); toast('Progress reset') } };
 }
 
