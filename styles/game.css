@@ -108,17 +108,37 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
 /* touch controls */
 #touch{position:absolute;inset:0;pointer-events:none;display:none}
 #touch.on{display:block}
-.tb{position:absolute;bottom:calc(16px + env(safe-area-inset-bottom));width:62px;height:62px;border-radius:50%;
-  background:rgba(124,92,255,.30);border:2px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:22px;pointer-events:auto;user-select:none}
-.tb:active{background:rgba(124,92,255,.6)}
-#tl{left:14px}#tr{left:88px}
-#tj{right:14px;background:rgba(56,225,200,.30)}
-#ta{right:88px;background:rgba(255,92,122,.30)}
-#te{right:14px;bottom:calc(90px + env(safe-area-inset-bottom));width:52px;height:52px;font-size:17px}
-#tq{right:88px;bottom:calc(90px + env(safe-area-inset-bottom));width:52px;height:52px;font-size:17px;background:rgba(255,200,74,.28)}
-#ts{right:14px;bottom:calc(160px + env(safe-area-inset-bottom));width:58px;height:58px;font-size:22px;
+/* every control sits on its own bottom step, all measured from --tlift so the whole
+   cluster can be raised at once, and none of them may scroll, zoom or select on a tap */
+#touch{--tlift:calc(58px + env(safe-area-inset-bottom));--tscale:1}
+#touch *{touch-action:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;user-select:none}
+.tb{position:absolute;bottom:var(--tlift);width:calc(76px * var(--tscale));height:calc(76px * var(--tscale));border-radius:50%;
+  background:rgba(124,92,255,.30);border:2px solid rgba(255,255,255,.28);display:grid;place-items:center;font-size:26px;pointer-events:auto;user-select:none;
+  transition:transform .06s,background .06s}
+.tb.hot{background:rgba(124,92,255,.62);transform:scale(.93)}
+#tj{right:14px;width:calc(104px * var(--tscale));height:calc(104px * var(--tscale));font-size:calc(38px * var(--tscale));background:rgba(56,225,200,.32);border-color:rgba(56,225,200,.6)}
+#tj.hot{background:rgba(56,225,200,.68)}
+#ta{right:calc(126px * var(--tscale));width:calc(84px * var(--tscale));height:calc(84px * var(--tscale));font-size:calc(30px * var(--tscale));background:rgba(255,92,122,.30)}
+#ta.hot{background:rgba(255,92,122,.62)}
+#te{right:14px;bottom:calc(var(--tlift) + 118px * var(--tscale));width:calc(62px * var(--tscale));height:calc(62px * var(--tscale));font-size:20px}
+#tq{right:calc(90px * var(--tscale));bottom:calc(var(--tlift) + 118px * var(--tscale));width:calc(62px * var(--tscale));height:calc(62px * var(--tscale));font-size:20px;background:rgba(255,200,74,.28)}
+#tq.hot{background:rgba(255,200,74,.62)}
+#ts{right:14px;bottom:calc(var(--tlift) + 192px * var(--tscale));width:calc(68px * var(--tscale));height:calc(68px * var(--tscale));font-size:26px;
   background:rgba(255,92,122,.34);border-color:rgba(255,200,74,.7)}
 #ts.empty{opacity:.35}
+/* the movement stick: a big base you can grab anywhere inside, with a knob that follows the thumb */
+#tstick{position:absolute;left:14px;bottom:var(--tlift);width:calc(168px * var(--tscale));height:calc(168px * var(--tscale));border-radius:50%;pointer-events:auto;
+  background:radial-gradient(circle at 50% 50%,rgba(124,92,255,.16),rgba(124,92,255,.26));
+  border:2px solid rgba(255,255,255,.22);display:grid;place-items:center}
+#tstick .ring{position:absolute;width:56%;height:56%;border-radius:50%;border:2px dashed rgba(255,255,255,.16)}
+#tstick .knob{position:absolute;width:calc(74px * var(--tscale));height:calc(74px * var(--tscale));border-radius:50%;
+  background:radial-gradient(circle at 38% 34%,rgba(255,255,255,.55),rgba(124,92,255,.75));
+  border:2px solid rgba(255,255,255,.5);box-shadow:0 6px 18px rgba(0,0,0,.35);
+  transform:translate(0,0);transition:transform .05s linear}
+#tstick.hot{border-color:rgba(255,255,255,.45)}
+#tstick.hot .knob{transition:none}
+#tstick .ar{position:absolute;font-size:16px;color:rgba(255,255,255,.45);pointer-events:none}
+#tstick .ar.l{left:10px}#tstick .ar.r{right:10px}
 
 /* ---------- modals ---------- */
 .modal{position:fixed;inset:0;background:rgba(8,5,22,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px;z-index:40}
