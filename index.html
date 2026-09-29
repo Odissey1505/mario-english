@@ -48,6 +48,13 @@
 <section class="screen" id="s-topics"><div class="wrap">
   <div class="topbar"><button class="back" data-go="back">← Back</button><h2>Learning topics</h2></div>
   <p class="muted" id="topics-hint" style="margin-bottom:10px"></p>
+  <div class="panel" id="lib-entry">
+    <h3>📚 Courses, units and lessons</h3>
+    <p class="muted" id="lib-summary">—</p>
+    <div class="row" style="margin-top:10px">
+      <button class="pill gold" id="lib-open">Open the course library</button>
+      <button class="pill" id="lib-clear">Remove all lessons</button></div>
+  </div>
   <div class="panel">
     <h3>📘 Vocabulary <span class="muted" id="vcount"></span></h3>
     <div class="row" style="margin-bottom:12px">
@@ -148,6 +155,25 @@
 </div></section>
 
 <!-- ============ COURSE BUILDER ============ -->
+<!-- ============ COURSE LIBRARY (pick lessons, units, whole courses) ============ -->
+<section class="screen" id="s-lessons"><div class="wrap">
+  <div class="topbar"><button class="back" data-go="back">← Back</button><h2>Course library</h2></div>
+  <p class="muted" id="lib-hint" style="margin-bottom:10px"></p>
+  <div class="panel">
+    <div class="row" style="gap:8px">
+      <input id="lib-search" class="qinput" style="flex:1;min-width:150px;text-align:left;font-size:15px;letter-spacing:0" placeholder="🔍 Find a lesson or unit">
+      <button class="pill" id="lib-expand">Expand all</button>
+      <button class="pill" id="lib-collapse">Collapse</button>
+    </div>
+    <div class="row" style="margin-top:10px" id="lib-scope"></div>
+    <p class="muted" style="margin-top:8px" id="lib-scope-hint"></p>
+  </div>
+  <div id="lib-tree"></div>
+  <div class="sticky-cta"><div class="inner">
+    <button class="pill" id="lib-none" style="margin-right:8px">Clear</button>
+    <button class="big-btn" id="lib-done">Use these lessons</button></div></div>
+</div></section>
+
 <section class="screen" id="s-courses"><div class="wrap">
   <div class="topbar"><button class="back" data-go="menu">← Menu</button><h2 id="cb-title">My Courses</h2></div>
   <div id="cb-body"></div>
@@ -211,6 +237,7 @@
 <script src="src/net.js"></script>
 <script src="src/ui.js"></script>
 <script src="src/courses-ui.js"></script>
+<script src="src/lessons-ui.js"></script>
 <script src="src/main.js"></script>
 
 </body>
