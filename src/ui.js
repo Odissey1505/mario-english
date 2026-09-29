@@ -36,6 +36,12 @@ function renderTopics(){
   const btn=$('#topics-next'); if(btn) btn.textContent=back?'← Back to the room':'Next: difficulty →';
   const hint=$('#topics-hint');
   if(hint) hint.textContent=back?'Choosing for room '+NET.code+' — your partner sees the change at once.':'';
+  /* the course library sits above the chips: lessons, units and whole courses live there */
+  const ls=$('#lib-summary'); if(ls) ls.textContent=libSummaryText();
+  const lo=$('#lib-open'); if(lo) lo.onclick=()=>openLessons('topics');
+  const lc=$('#lib-clear');
+  if(lc){ lc.style.display=libCount().lessons?'':'none';
+    lc.onclick=()=>{ libClearAll(); renderTopics(); toast('Course lessons cleared') } }
   const v=$('#vtopics'), g=$('#gtopics');
   const chip=(id,t,attr)=>'<div class="chip '+(SESSION.topics[attr].includes(id)?'sel':'')+'" data-'+attr+'="'+id+'">'+
       '<span class="box"><i>✓</i></span><span>'+t.n+(t.custom?' <span style="opacity:.55;font-size:11px">· my course</span>':'')+'</span></div>';

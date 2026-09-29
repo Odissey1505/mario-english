@@ -369,9 +369,12 @@ function hostPlanPanel(){
     '<div class="kv"><span>Vocabulary</span><b>'+esc(topicSummary(SESSION.topics.v,WORDBANK,3))+'</b></div>'+
     '<div class="kv"><span>Grammar</span><b>'+esc(topicSummary(SESSION.topics.g,GRAMMARBANK,3))+'</b></div>'+
     '<div class="kv"><span>Difficulty</span><b>'+DIFF[SESSION.diff].n+'</b></div>'+
-    '<h3 style="margin:16px 0 8px">Pick a lesson</h3>'+
+    '<h3 style="margin:16px 0 8px">Pick the content</h3>'+
+    '<div class="row"><button class="pill gold" data-netlib="1">📚 Courses, units and lessons</button></div>'+
+    '<p class="muted" style="margin:8px 0 0">'+esc(libSummaryText())+'</p>'+
+    '<h3 style="margin:16px 0 8px">Or one lesson quickly</h3>'+
     '<select id="net-lesson" class="qinput" style="text-align:left;font-size:14px;letter-spacing:0">'+
-      '<option value="">— choose a lesson from a course —</option>'+
+      '<option value="">— choose a single lesson —</option>'+
       lessons.map((l,i)=>'<option value="'+i+'"'+(activeLesson===l?' selected':'')+'>'+esc(l.label)+'</option>').join('')+
     '</select>'+
     '<h3 style="margin:16px 0 8px">Or a built-in topic</h3>'+
@@ -450,6 +453,8 @@ function wireHostPlan(){
   $$('[data-netem]').forEach(b=>b.onclick=()=>{
     opt().emoji=b.dataset.netem==='1'; save(); sendPlan(); renderOnline();
   });
+  const lib=$('[data-netlib]');
+  if(lib) lib.onclick=()=>openLessons('online');
   const full=$('[data-netfull]');
   if(full) full.onclick=()=>{ NET.fromLobby=true; show('topics') };
 }

@@ -44,6 +44,7 @@ addEventListener('resize',updateTouchVisibility);
 document.addEventListener('pointerdown',()=>Snd.resume(),{once:true});
 document.addEventListener('keydown',()=>Snd.resume(),{once:true});
 SESSION.diff=S.diff||0;
+wireLessons();
 loadHeroSheets(); syncCourses(); ensureDaily(); updateTouchVisibility(); renderMenu();
 /* an invite link lands straight in the room — nothing to pick, everything comes from the host */
 autoJoin();

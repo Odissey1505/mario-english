@@ -75,6 +75,7 @@ function show(id,push=true){
   if(id==='brief') renderBrief();
   if(id==='online') renderOnline();
   if(id==='hero') renderHero();
+  if(id==='lessons') renderLessons();
   if(id==='courses') renderCourses();
   if(id==='shop') renderShop();
   if(id==='backpack') renderBackpack();
