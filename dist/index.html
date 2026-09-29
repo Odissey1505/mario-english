@@ -216,6 +216,23 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
   .menu-list{max-width:none}
   .opts.two{grid-template-columns:1fr}
 }
+/* ---------- course library (lesson / unit / course picker) ---------- */
+.lib-course{padding:12px 12px 8px}
+.lib-row{display:flex;align-items:center;gap:9px;padding:9px 8px;border-radius:12px;cursor:pointer;
+  font-size:14px;user-select:none;line-height:1.35}
+.lib-row:hover{background:rgba(124,92,255,.14)}
+.lib-row.head{font-size:15.5px;padding:10px 8px}
+.lib-row .grow{margin-left:auto;font-size:11.5px;white-space:nowrap;flex:0 0 auto}
+.lib-row .caret{width:12px;color:var(--muted);font-size:11px;flex:0 0 auto}
+.lib-sec{margin-left:14px;border-left:1px solid var(--line);padding-left:6px}
+.lib-row.lesson{margin-left:14px;font-size:13.5px;color:#E7E3FF}
+.tickbtn{background:none;border:0;padding:0;display:grid;place-items:center;flex:0 0 auto;cursor:pointer}
+.tick{width:20px;height:20px;border-radius:6px;border:2px solid var(--muted);display:grid;place-items:center;
+  font-size:12px;font-weight:700;color:#0E0A24;background:transparent}
+.tick.on{background:var(--cyan);border-color:var(--cyan)}
+.tick.part{background:rgba(255,200,74,.85);border-color:rgba(255,200,74,.95)}
+.tickbtn:hover .tick{border-color:var(--violet)}
+@media (max-width:520px){ .lib-row .grow{display:none} .lib-sec{margin-left:8px} .lib-row.lesson{margin-left:8px} }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 </style>
@@ -259,6 +276,13 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
 <section class="screen" id="s-topics"><div class="wrap">
   <div class="topbar"><button class="back" data-go="back">← Back</button><h2>Learning topics</h2></div>
   <p class="muted" id="topics-hint" style="margin-bottom:10px"></p>
+  <div class="panel" id="lib-entry">
+    <h3>📚 Courses, units and lessons</h3>
+    <p class="muted" id="lib-summary">—</p>
+    <div class="row" style="margin-top:10px">
+      <button class="pill gold" id="lib-open">Open the course library</button>
+      <button class="pill" id="lib-clear">Remove all lessons</button></div>
+  </div>
   <div class="panel">
     <h3>📘 Vocabulary <span class="muted" id="vcount"></span></h3>
     <div class="row" style="margin-bottom:12px">
@@ -359,6 +383,25 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
 </div></section>
 
 <!-- ============ COURSE BUILDER ============ -->
+<!-- ============ COURSE LIBRARY (pick lessons, units, whole courses) ============ -->
+<section class="screen" id="s-lessons"><div class="wrap">
+  <div class="topbar"><button class="back" data-go="back">← Back</button><h2>Course library</h2></div>
+  <p class="muted" id="lib-hint" style="margin-bottom:10px"></p>
+  <div class="panel">
+    <div class="row" style="gap:8px">
+      <input id="lib-search" class="qinput" style="flex:1;min-width:150px;text-align:left;font-size:15px;letter-spacing:0" placeholder="🔍 Find a lesson or unit">
+      <button class="pill" id="lib-expand">Expand all</button>
+      <button class="pill" id="lib-collapse">Collapse</button>
+    </div>
+    <div class="row" style="margin-top:10px" id="lib-scope"></div>
+    <p class="muted" style="margin-top:8px" id="lib-scope-hint"></p>
+  </div>
+  <div id="lib-tree"></div>
+  <div class="sticky-cta"><div class="inner">
+    <button class="pill" id="lib-none" style="margin-right:8px">Clear</button>
+    <button class="big-btn" id="lib-done">Use these lessons</button></div></div>
+</div></section>
+
 <section class="screen" id="s-courses"><div class="wrap">
   <div class="topbar"><button class="back" data-go="menu">← Menu</button><h2 id="cb-title">My Courses</h2></div>
   <div id="cb-body"></div>
@@ -783,6 +826,7 @@ function show(id,push=true){
   if(id==='brief') renderBrief();
   if(id==='online') renderOnline();
   if(id==='hero') renderHero();
+  if(id==='lessons') renderLessons();
   if(id==='courses') renderCourses();
   if(id==='shop') renderShop();
   if(id==='backpack') renderBackpack();
@@ -3065,9 +3109,12 @@ function hostPlanPanel(){
     '<div class="kv"><span>Vocabulary</span><b>'+esc(topicSummary(SESSION.topics.v,WORDBANK,3))+'</b></div>'+
     '<div class="kv"><span>Grammar</span><b>'+esc(topicSummary(SESSION.topics.g,GRAMMARBANK,3))+'</b></div>'+
     '<div class="kv"><span>Difficulty</span><b>'+DIFF[SESSION.diff].n+'</b></div>'+
-    '<h3 style="margin:16px 0 8px">Pick a lesson</h3>'+
+    '<h3 style="margin:16px 0 8px">Pick the content</h3>'+
+    '<div class="row"><button class="pill gold" data-netlib="1">📚 Courses, units and lessons</button></div>'+
+    '<p class="muted" style="margin:8px 0 0">'+esc(libSummaryText())+'</p>'+
+    '<h3 style="margin:16px 0 8px">Or one lesson quickly</h3>'+
     '<select id="net-lesson" class="qinput" style="text-align:left;font-size:14px;letter-spacing:0">'+
-      '<option value="">— choose a lesson from a course —</option>'+
+      '<option value="">— choose a single lesson —</option>'+
       lessons.map((l,i)=>'<option value="'+i+'"'+(activeLesson===l?' selected':'')+'>'+esc(l.label)+'</option>').join('')+
     '</select>'+
     '<h3 style="margin:16px 0 8px">Or a built-in topic</h3>'+
@@ -3146,6 +3193,8 @@ function wireHostPlan(){
   $$('[data-netem]').forEach(b=>b.onclick=()=>{
     opt().emoji=b.dataset.netem==='1'; save(); sendPlan(); renderOnline();
   });
+  const lib=$('[data-netlib]');
+  if(lib) lib.onclick=()=>openLessons('online');
   const full=$('[data-netfull]');
   if(full) full.onclick=()=>{ NET.fromLobby=true; show('topics') };
 }
@@ -3356,6 +3405,12 @@ function renderTopics(){
   const btn=$('#topics-next'); if(btn) btn.textContent=back?'← Back to the room':'Next: difficulty →';
   const hint=$('#topics-hint');
   if(hint) hint.textContent=back?'Choosing for room '+NET.code+' — your partner sees the change at once.':'';
+  /* the course library sits above the chips: lessons, units and whole courses live there */
+  const ls=$('#lib-summary'); if(ls) ls.textContent=libSummaryText();
+  const lo=$('#lib-open'); if(lo) lo.onclick=()=>openLessons('topics');
+  const lc=$('#lib-clear');
+  if(lc){ lc.style.display=libCount().lessons?'':'none';
+    lc.onclick=()=>{ libClearAll(); renderTopics(); toast('Course lessons cleared') } }
   const v=$('#vtopics'), g=$('#gtopics');
   const chip=(id,t,attr)=>'<div class="chip '+(SESSION.topics[attr].includes(id)?'sel':'')+'" data-'+attr+'="'+id+'">'+
       '<span class="box"><i>✓</i></span><span>'+t.n+(t.custom?' <span style="opacity:.55;font-size:11px">· my course</span>':'')+'</span></div>';
@@ -3829,6 +3884,194 @@ function DEMO_COURSE(){
               {k:'ch',q:'We keep our clothes ___ the wardrobe.',o:['on','in','at'],a:1,ee:'"In" means inside.'}]}]}]};
 }
 
+/* ===== src/lessons-ui.js ===== */
+/* =====================================================================
+   COURSE LIBRARY — pick lessons, whole units or whole courses
+   ---------------------------------------------------------------------
+   One tree with three levels (course › unit › lesson) and a tick on every level,
+   so "this lesson", "this whole unit" and "the entire course" are the same gesture.
+   Several units and several courses can be on at once, and words and grammar can be
+   chosen together or separately.
+
+   It stores nothing of its own: a tick is just SESSION.topics.v / .g — the same arrays
+   the topic chips write — so the level builder, homework codes and the online room all
+   keep working unchanged.
+   ===================================================================== */
+const LIB={ open:{}, q:'', scope:'both', ctx:'topics' };
+
+/* the library as a tree, with what each lesson actually holds */
+function libTree(){
+  return allCourses().map(({co,src,i:ci})=>{
+    const sections=(co.sections||[]).map((se,si)=>{
+      const lessons=(se.lessons||[]).map((le,li)=>{
+        const t=lessonTopics(le,ci,si,li,src);
+        return {name:le.name, id:src+ci+'.'+si+'.'+li, v:t.v, g:t.g,
+                words:(le.words||[]).length, gram:(le.grammar||[]).length};
+      }).filter(l=>l.v.length||l.g.length);
+      return {name:se.name, id:src+ci+'.'+si, lessons};
+    }).filter(s=>s.lessons.length);
+    return {name:co.name, id:src+ci, mine:src==='u', sections};
+  }).filter(c=>c.sections.length);
+}
+function libNode(id){                     /* find a course, unit or lesson by its row id */
+  const tree=libTree();
+  if(id[0]==='c') return tree.find(c=>'c'+c.id===id);
+  if(id[0]==='s') return tree.flatMap(c=>c.sections).find(s=>'s'+s.id===id);
+  return tree.flatMap(c=>c.sections).flatMap(s=>s.lessons).find(l=>'l'+l.id===id);
+}
+/* every topic key under a node, split by kind */
+function libKeys(node){
+  const v=[], g=[];
+  const take=l=>{ (l.v||[]).forEach(k=>v.push(k)); (l.g||[]).forEach(k=>g.push(k)) };
+  if(node.sections) node.sections.forEach(s=>s.lessons.forEach(take));
+  else if(node.lessons) node.lessons.forEach(take);
+  else take(node);
+  return {v,g};
+}
+function libWants(){ return {v:LIB.scope!=='g', g:LIB.scope!=='v'} }   /* which kinds a tick touches */
+function libState(node){                  /* on / part / off */
+  const {v,g}=libKeys(node), w=libWants();
+  const all=[...(w.v?v:[]),...(w.g?g:[])];
+  if(!all.length) return 'off';
+  const on=all.filter(k=>SESSION.topics[k.startsWith(CUSTOM_V)?'v':'g'].includes(k)).length;
+  return on===0?'off':(on===all.length?'on':'part');
+}
+function libSet(node,on){
+  const {v,g}=libKeys(node), w=libWants();
+  const put=(arr,keys)=>keys.forEach(k=>{ const i=arr.indexOf(k);
+    if(on&&i<0) arr.push(k); if(!on&&i>=0) arr.splice(i,1) });
+  if(w.v) put(SESSION.topics.v,v);
+  if(w.g) put(SESSION.topics.g,g);
+  S.topics={v:[...SESSION.topics.v],g:[...SESSION.topics.g]}; save();
+}
+/* how much is chosen, in words and tasks — the number that says what a level will feel like */
+function libCount(){
+  let lessons=0, words=0, gram=0, units=new Set(), courses=new Set();
+  libTree().forEach(c=>c.sections.forEach(s=>s.lessons.forEach(l=>{
+    const vOn=l.v.length&&SESSION.topics.v.includes(l.v[0]);
+    const gOn=l.g.length&&SESSION.topics.g.includes(l.g[0]);
+    if(vOn||gOn){ lessons++; units.add(s.id); courses.add(c.id) }
+    if(vOn) words+=l.words;
+    if(gOn) gram+=l.gram;
+  })));
+  return {lessons,words,gram,units:units.size,courses:courses.size};
+}
+function libSummaryText(){
+  const c=libCount();
+  if(!c.lessons) return 'No course lessons chosen — the game will use the built-in topics below.';
+  return c.lessons+' lesson'+(c.lessons>1?'s':'')+' from '+c.units+' unit'+(c.units>1?'s':'')+
+         ' in '+c.courses+' course'+(c.courses>1?'s':'')+' · 📘 '+c.words+' words · 📐 '+c.gram+' grammar tasks';
+}
+function libClearAll(){
+  SESSION.topics.v=SESSION.topics.v.filter(k=>!isCustom(k));
+  SESSION.topics.g=SESSION.topics.g.filter(k=>!isCustom(k));
+  S.topics={v:[...SESSION.topics.v],g:[...SESSION.topics.g]}; save();
+}
+const libHit=t=>!LIB.q||String(t).toLowerCase().includes(LIB.q);
+const libTick=st=>'<span class="tick '+st+'">'+(st==='on'?'✓':(st==='part'?'–':''))+'</span>';
+/* a search shows everything it matched; otherwise a single course starts open and the rest closed */
+function libOpen(key,dflt){ return LIB.q?true:(LIB.open[key]===undefined?dflt:LIB.open[key]) }
+
+function renderLessons(){
+  const room=LIB.ctx==='online';
+  $('#lib-hint').textContent=room
+    ? 'Choosing for room '+NET.code+' — your partner sees every change at once.'
+    : 'Tick a lesson, a whole unit or a whole course. Several units and several courses can be on at the same time.';
+  const sc=[['both','📘📐 Words + grammar'],['v','📘 Words only'],['g','📐 Grammar only']];
+  $('#lib-scope').innerHTML=sc.map(([id,n])=>
+    '<button class="pill'+(LIB.scope===id?' gold':'')+'" data-libscope="'+id+'">'+n+'</button>').join('');
+  $('#lib-scope-hint').innerHTML=(LIB.scope==='both'
+    ? 'A tick takes both the words and the grammar of that lesson.'
+    : (LIB.scope==='v' ? 'A tick takes only the words — grammar keeps what it already has.'
+                       : 'A tick takes only the grammar — words keep what they already have.'))+
+    '<br><b id="lib-count"></b>';
+
+  const tree=libTree(), single=tree.length===1;
+  let html='';
+  tree.forEach(c=>{
+    const cHit=libHit(c.name);
+    const secs=c.sections.map(s=>({s,lessons:s.lessons.filter(l=>cHit||libHit(s.name)||libHit(l.name))}))
+                         .filter(x=>x.lessons.length);
+    if(!secs.length) return;
+    const ck='c'+c.id, cOpen=libOpen(ck,single);
+    html+='<div class="panel lib-course">'+
+      '<div class="lib-row head" data-libtoggle="'+ck+'" data-libdflt="'+(single?1:0)+'">'+
+        '<button class="tickbtn" data-libpick="'+ck+'" title="The whole course">'+libTick(libState(c))+'</button>'+
+        '<span class="caret">'+(cOpen?'▾':'▸')+'</span>'+
+        '<b>'+esc(c.name)+'</b>'+(c.mine?' <span class="badge learning">my course</span>':'')+
+        '<span class="muted grow">'+c.sections.length+' units · '+
+          c.sections.reduce((n,s)=>n+s.lessons.length,0)+' lessons</span></div>';
+    if(cOpen) secs.forEach(({s,lessons})=>{
+      const sk='s'+s.id, sOpen=libOpen(sk,false);
+      html+='<div class="lib-sec">'+
+        '<div class="lib-row" data-libtoggle="'+sk+'" data-libdflt="0">'+
+          '<button class="tickbtn" data-libpick="'+sk+'" title="The whole unit">'+libTick(libState(s))+'</button>'+
+          '<span class="caret">'+(sOpen?'▾':'▸')+'</span>'+
+          '<span>'+esc(s.name)+'</span>'+
+          '<span class="muted grow">'+lessons.length+' lessons</span></div>';
+      if(sOpen) lessons.forEach(l=>{
+        html+='<div class="lib-row lesson" data-libpick="l'+l.id+'">'+
+          '<span class="tickbtn">'+libTick(libState(l))+'</span>'+
+          '<span>'+esc(l.name)+'</span>'+
+          '<span class="muted grow">'+(l.words?'📘 '+l.words:'')+(l.words&&l.gram?' · ':'')+
+            (l.gram?'📐 '+l.gram:'')+'</span></div>';
+      });
+      html+='</div>';
+    });
+    html+='</div>';
+  });
+  if(!html) html='<div class="panel"><p class="muted">Nothing matches “'+esc(LIB.q)+'”. '+
+    'Clear the search to see every course.</p></div>';
+  $('#lib-tree').innerHTML=html;
+
+  /* a row opens and closes; the tick button on it selects */
+  $$('#lib-tree [data-libtoggle]').forEach(el=>el.onclick=()=>{
+    const k=el.dataset.libtoggle;
+    LIB.open[k]=!libOpen(k,el.dataset.libdflt==='1');
+    renderLessons();
+  });
+  $$('#lib-tree [data-libpick]').forEach(el=>el.onclick=e=>{
+    e.stopPropagation();
+    const node=libNode(el.dataset.libpick); if(!node) return;
+    const turnOn=libState(node)!=='on';
+    libSet(node,turnOn);
+    if(el.dataset.libpick[0]==='c'&&turnOn) LIB.open[el.dataset.libpick]=true;
+    renderLessons(); libPush();
+  });
+
+  const c=libCount();
+  const cnt=$('#lib-count');
+  if(cnt) cnt.textContent=c.lessons?('Chosen: '+libSummaryText()):'Chosen: nothing yet';
+  $('#lib-done').textContent=room
+    ? (c.lessons?('Send '+c.lessons+' lesson'+(c.lessons>1?'s':'')+' to the room'):'Back to the room')
+    : (c.lessons?('Use '+c.lessons+' lesson'+(c.lessons>1?'s':'')+' →'):'Back to the topics →');
+  $('#lib-none').style.display=c.lessons?'':'none';
+}
+/* a change made from inside a room reaches the partner straight away */
+function libPush(){ if(LIB.ctx==='online'&&NET.on&&NET.role==='host') sendPlan() }
+function openLessons(ctx){
+  LIB.ctx=ctx||'topics'; LIB.q='';
+  const s=$('#lib-search'); if(s) s.value='';
+  show('lessons');
+}
+function wireLessons(){
+  const s=$('#lib-search');
+  if(s) s.oninput=()=>{ LIB.q=s.value.trim().toLowerCase(); renderLessons() };
+  $('#lib-expand').onclick=()=>{ libTree().forEach(c=>{ LIB.open['c'+c.id]=true;
+    c.sections.forEach(x=>LIB.open['s'+x.id]=true) }); renderLessons() };
+  $('#lib-collapse').onclick=()=>{ LIB.open={}; libTree().forEach(c=>{ LIB.open['c'+c.id]=false;
+    c.sections.forEach(x=>LIB.open['s'+x.id]=false) }); renderLessons() };
+  $('#lib-none').onclick=()=>{ libClearAll(); renderLessons(); libPush(); toast('Course lessons cleared') };
+  $('#lib-done').onclick=()=>{
+    if(LIB.ctx==='online'){ setRoomTopics(null,null); show('online'); return }
+    show('topics');
+  };
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-libscope]'); if(!b) return;
+    LIB.scope=b.dataset.libscope; renderLessons();
+  });
+}
+
 /* ===== src/main.js ===== */
 /* =====================================================================
    11. START
@@ -3876,6 +4119,7 @@ addEventListener('resize',updateTouchVisibility);
 document.addEventListener('pointerdown',()=>Snd.resume(),{once:true});
 document.addEventListener('keydown',()=>Snd.resume(),{once:true});
 SESSION.diff=S.diff||0;
+wireLessons();
 loadHeroSheets(); syncCourses(); ensureDaily(); updateTouchVisibility(); renderMenu();
 /* an invite link lands straight in the room — nothing to pick, everything comes from the host */
 autoJoin();
