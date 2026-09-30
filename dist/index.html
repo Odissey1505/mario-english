@@ -104,6 +104,8 @@ button{font-family:inherit;color:inherit}
 canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-action:none;display:block}
 .hud{position:absolute;left:0;right:0;top:0;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;pointer-events:none;font-size:13px}
 .hud .box{background:rgba(12,8,34,.72);border:1px solid var(--line);border-radius:12px;padding:7px 11px;backdrop-filter:blur(6px)}
+.hud .box.freeze{background:rgba(24,60,96,.8);border-color:rgba(142,216,255,.6);color:#BFE9FF;animation:chill 1s ease-in-out infinite}
+@keyframes chill{0%,100%{box-shadow:0 0 0 rgba(142,216,255,0)}50%{box-shadow:0 0 14px rgba(142,216,255,.5)}}
 .hud .mission{flex:1;min-width:0}
 .hud .mission b{display:block;font-size:12px;color:var(--gold);font-family:Unbounded}
 .hud .mission span{font-size:12px;color:var(--muted)}
@@ -350,6 +352,7 @@ canvas{width:100%;height:100%;object-fit:contain;image-rendering:auto;touch-acti
     <div class="box" id="boostslot">Q —</div>
     <div class="box" id="superbox">🚀 ×5</div>
     <div class="box" id="jumpbox" style="display:none">⬆️</div>
+    <div class="box freeze" id="freezebox" style="display:none">🧊</div>
     <div class="box" id="mate" style="display:none">🌐</div>
     <div class="box pausebtn" id="pausebtn">⏸</div>
   </div>
@@ -676,7 +679,7 @@ const GEAR = [
 
 const BOOSTS = {
  shield:{ic:'🛡️',n:'Shield',d:'Ignores one wrong answer.',price:40},
- second:{ic:'🔄',n:'Second Chance',d:'Lets you answer one more time.',price:35},
+ second:{ic:'🔄',n:'Second Chance',d:'Forgives one wrong answer: no damage and no freeze. Tap it before you answer.',price:35},
  fifty:{ic:'✂️',n:'Fifty-Fifty',d:'Removes wrong options.',price:30},
  dictionary:{ic:'📗',n:'Dictionary',d:'Gives an extra clue about the word.',price:25},
  time:{ic:'⏳',n:'Time Freeze',d:'Stops the question timer.',price:30},
@@ -1238,6 +1241,7 @@ function ask(q){
     askActive=true; clearKeys();
     const card=$('#q-card');
     let done=false, second=false, shielded=false, tId=null, tLeft=q.time||0, helpTried=false, rescued=false;
+    let answered=false;                 /* one answer per question — no tapping the right one afterwards */
     const isHard=SESSION.diff===2;
     card.innerHTML='';
     /* head */
@@ -1294,7 +1298,7 @@ function ask(q){
         shuffle(wrong).slice(0,Math.max(1,q.options.length-2)).forEach(i=>optEls[i].classList.add('dim')); }]);
     bl.push(['dictionary','📗 Dictionary',()=>{ if(!spend('dictionary'))return; sub.textContent=(q.sub?q.sub+' · ':'')+(q.clue||q.ee) }]);
     if(q.rule) bl.push(['grammar','📖 Rule',()=>{ if(!spend('grammar'))return; sub.textContent=q.rule }]);
-    bl.push(['second','🔄 Second chance',()=>{ if(!spend('second'))return; second=true; toast('One mistake will be forgiven') }]);
+    bl.push(['second','🔄 Forgive a mistake',()=>{ if(!spend('second'))return; second=true; toast('One wrong answer will cost you nothing') }]);
     if(tLeft) bl.push(['time','⏳ Freeze timer',()=>{ if(!spend('time'))return; clearInterval(tId); tId=null; if(bar) bar.style.background='var(--cyan)' }]);
     bl.forEach(([id,label,fn])=>{ const b=document.createElement('button'); b.className='bchip'; b.textContent=label+' ×'+boostLeft(id);
       b.disabled=!boostLeft(id); b.onclick=()=>{fn(); b.textContent=label+' ×'+boostLeft(id); b.disabled=!boostLeft(id)}; boostRow.appendChild(b) });
@@ -1320,10 +1324,14 @@ function ask(q){
       return String(q.correct).split('|').some(c=>sameAnswer(c,val));
     }
     function pick(val){
-      if(done) return;
+      if(done||answered) return;
       let ok=isRight(val);
-      if(!ok && second){ second=false; toast('Try once more'); Snd.beep(400,.08); 
-        if(q.kind==='choice'&&val!==null) optEls[val].classList.add('dim'); return; }
+      /* the moment an answer is in, the whole answer area stops taking clicks —
+         including while a co-op partner is being asked to rescue it */
+      answered=true; body.style.pointerEvents='none';
+      /* Second Chance forgives the mistake — it never hands back the question. Once an
+         answer is in, the right option can no longer be tapped: guessing must cost something. */
+      if(!ok && second){ second=false; shielded=true; }
       /* co-op: hand the question to your partner before anything else is spent on it */
       if(!ok && NET.on && NET.mate && NET.mode==='coop' && q.kind==='choice' && !helpTried){
         helpTried=true; toast('Asking your partner…');
@@ -1341,6 +1349,8 @@ function ask(q){
       if(!ok && LV && S.gear.eq.helmet==='helm-guard' && !LV.guardUsed){ LV.guardUsed=true; shielded=true; }
       else if(!ok && boostLeft('shield')){ useBoost('shield'); shielded=true; }
       done=true; clearInterval(tId);
+      /* a mistake nobody absorbed costs ten seconds of silence */
+      if(!ok && !shielded && LV) startFreeze();
       if(q.kind==='choice'){ optEls.forEach((b,i)=>{ b.onclick=null; if(i===q.correct) b.classList.add('ok'); });
         if(!ok&&val!==null&&optEls[val]) optEls[val].classList.add('bad'); }
       optEls.forEach(e=>{ if(e.tagName==='BUTTON'&&e.className.includes('big-btn')) e.disabled=true });
@@ -1352,6 +1362,8 @@ function ask(q){
         : (rescued?'<b>🤝 Your partner answered it for you</b><br>':shielded?'<b>🛡️ A boost protected you</b><br>':'<b>❌ Not quite</b><br>')+
           'Correct answer: <b>'+ (q.kind==='choice'? q.options[q.correct] : q.answer) +'</b><br>'+expl;
       if(!isHard && q.clue && q.clue!==expl) fb.innerHTML+='<br><span style="opacity:.7;font-size:12.5px">'+q.clue+'</span>';
+      if(!ok&&!shielded&&LV) fb.innerHTML+='<br><span style="color:#8ED8FF">🧊 Frozen for 10 seconds — '+
+        'read the explanation while you wait, then carry on collecting coins.</span>';
       ok?Snd.good():Snd.bad();
       const next=document.createElement('button'); next.className='big-btn'; next.style.marginTop='14px';
       next.textContent=ok?'Continue →':'Got it →'; next.onclick=close; card.appendChild(next);
@@ -1582,6 +1594,29 @@ function tWipe(){ for(const id in FINGERS) tUp(id); stickOff() }
   addEventListener('blur',tWipe);
 })();
 
+/* ---------- the cost of a wrong answer ----------
+   A mistake freezes the learner out of questions for ten seconds. Running, jumping and
+   dodging all still work — only answering is on hold — so the penalty is felt without
+   turning into a dead stop, and there is no way to brute-force a question by guessing. */
+const FREEZE_TIME=600;                      /* 10 s at 60 fps */
+function startFreeze(){
+  if(!LV) return;
+  LV.freeze=FREEZE_TIME;
+  addFloat(P.x,P.y-34,'🧊 Frozen 10s','#8ED8FF');
+  burst(P.x+P.w/2,P.y+P.h/2,'#8ED8FF',16);
+  Snd.beep(300,.5,'sine',.10,-180);
+  if(NET.on&&NET.mate) netStat();
+  hud();
+}
+/* every question passes through here first */
+function chilled(){
+  if(!LV||!(LV.freeze>0)) return false;
+  const s=Math.ceil(LV.freeze/60);
+  addFloat(P.x,P.y-34,'🧊 '+s+'s','#8ED8FF');
+  toast('Frozen after that mistake — '+s+' s left',900);
+  Snd.beep(230,.09,'sine',.07,-40);
+  return true;
+}
 const ATTACK_REACH=170, ATTACK_HEIGHT=132;
 const SUPER_CHARGES=5, SUPER_TIME=120, FLY_TOP=46;   /* super jump: 5 flights, ~2 s each */
 /* answer streak → higher jumps for 30 seconds (30 s ≈ 1800 frames at 60 fps) */
@@ -1635,7 +1670,7 @@ function startLevel(worldId,diff,opts={}){
   LV.guardUsed=false; LV.freeHint=false; LV.magicSword=false; LV.busy=false; LV.paused=false;
   LV.startedAt=Date.now(); LV.mistakes=[]; LV.secrets=0; LV.quests=0;
   LV.stats={ok:0,bad:0,streak:0,best:0,boostsUsed:0,mobs:0};
-  LV.jumpMult=1; LV.jumpT=0;
+  LV.jumpMult=1; LV.jumpT=0; LV.freeze=0;
   LV.boosts={}; S.slots.forEach(id=>{ if(id&&S.boosts[id]>0){ LV.boosts[id]=S.boosts[id]; } });
   P.x=100; P.y=GYTOP-P.h-2; P.vx=P.vy=0; P.inv=0; P.atk=0; P.fly=0; P.safeX=100; camX=0; particles=[]; floats=[];
   LV.superLeft=SUPER_CHARGES+(S.gear.eq.boots==='boots-jump'?1:0);
@@ -1680,6 +1715,9 @@ function hud(){
   const jb=$('#jumpbox');
   if(LV.jumpT>0){ jb.style.display=''; jb.textContent='⬆️ ×'+LV.jumpMult+' · '+Math.ceil(LV.jumpT/60)+'s' }
   else jb.style.display='none';
+  const fz=$('#freezebox');
+  if(fz){ if(LV.freeze>0){ fz.style.display=''; fz.textContent='🧊 '+Math.ceil(LV.freeze/60)+'s' }
+          else fz.style.display='none' }
   $('#superbox').textContent='🚀 ×'+(LV.superLeft||0);
   $('#superbox').style.opacity=LV.superLeft?1:.45;
   const ts=$('#ts'); if(ts) ts.classList.toggle('empty',!LV.superLeft);
@@ -1784,7 +1822,9 @@ function addCoins(n,x,y){
 
 /* ---------- interaction: blocks, monsters, boss ---------- */
 async function hitBlock(b){
-  if(b.used||LV.busy) return; LV.busy=true; Snd.block();
+  if(b.used||LV.busy) return;
+  if(chilled()) return;
+  LV.busy=true; Snd.block();
   try{
   const q=QM.vocab(SESSION.diff);
   const {ok,shielded}=await ask(q);
@@ -1809,7 +1849,9 @@ async function hitBlock(b){
 }
 
 async function fight(e){
-  if(LV.busy||!e.alive) return; LV.busy=true;
+  if(LV.busy||!e.alive) return;
+  if(chilled()) return;
+  LV.busy=true;
   try{
   if(S.gear.eq.weapon==='sword-magic'&&!LV.magicSword&&!e.strong&&e.maxhp===1){
     LV.magicSword=true; killEnemy(e,true); LV.busy=false; return;
@@ -1839,7 +1881,9 @@ function killEnemy(e,magic){
 }
 
 async function bossAttackTry(){
-  if(LV.busy||!LV.boss.active||LV.boss.dead) return; LV.busy=true;
+  if(LV.busy||!LV.boss.active||LV.boss.dead) return;
+  if(chilled()) return;
+  LV.busy=true;
   try{
   LV.bossQids=LV.bossQids||[];
   const q=QM.grammar(SESSION.diff,LV.bossQids);
@@ -1864,11 +1908,11 @@ async function interact(){
   if(LV.busy) return;
   try{
   const near=(o,d=70)=>Math.abs((o.x+(o.w||40)/2)-(P.x+P.w/2))<d && Math.abs((o.y||GYTOP)-P.y)<120;
-  for(const w of LV.wells) if(!w.used&&near(w,60)){ LV.busy=true; clearKeys();
+  for(const w of LV.wells) if(!w.used&&near(w,60)){ if(chilled()) return; LV.busy=true; clearKeys();
       let r=false; try{ r=await runQuest() }catch(err){ unstick('quest: '+err.message) }
       w.used=true; LV.quests++; S.stats.quests++; daily('d-quest',1); if(r) applyQuestReward();
       clearKeys(); LV.busy=false; return; }
-  for(const st of LV.stones) if(near(st,58)){ LV.busy=true;
+  for(const st of LV.stones) if(near(st,58)){ if(chilled()) return; LV.busy=true;
       try{ await runeStone(st) }catch(err){ unstick('stone: '+err.message) }
       LV.busy=false; return; }
   for(const c of LV.chests) if(!c.open&&near(c,60)){
@@ -2005,6 +2049,15 @@ function update(dt){
   LV.enemies.forEach(e=>{ if(e.flash>0) e.flash-=dt });
   if(LV.jumpT>0){ LV.jumpT-=dt; if(LV.jumpT<=0){ LV.jumpT=0; LV.jumpMult=1; hud(); addFloat(P.x,P.y-20,'jump boost over','#9E95CF') }
     else if(Math.floor(LV.jumpT)%60===0) hud(); }
+  if(LV.freeze>0){
+    const was=Math.ceil(LV.freeze/60);
+    LV.freeze-=dt;
+    if(LV.freeze<=0){ LV.freeze=0; hud(); addFloat(P.x,P.y-24,'🔥 Thawed — answer again','#FFC84A');
+      Snd.beep(660,.22,'sine',.09,220); toast('You can answer again'); }
+    else { if(Math.ceil(LV.freeze/60)!==was) hud();
+      if(Math.random()<.25) particles.push({x:P.x+rint(-16,P.w+16),y:P.y-10,vx:(Math.random()-.5)*.6,vy:.7+Math.random(),
+                                            c:'rgba(142,216,255,.8)',life:38,g:.008,s:3}); }
+  }
   if(shake>0) shake=Math.max(0,shake-.45*dt);
   if(fade<1) fade=Math.min(1,fade+.03*dt);
   updateWeather(dt);
@@ -2330,6 +2383,20 @@ function draw(){
   drawWeather(c);
   c.drawImage(GRAD.vig,0,0);
   if(P.inv>60){ c.fillStyle='rgba(255,60,90,'+((P.inv-60)/30*.28)+')'; c.fillRect(0,0,VW,VH) }
+  /* frozen out of questions: a cold edge on the screen, so the state is never a mystery */
+  if(LV.freeze>0){
+    const g=c.createLinearGradient(0,0,0,VH);
+    g.addColorStop(0,'rgba(142,216,255,.22)'); g.addColorStop(.35,'rgba(142,216,255,.05)');
+    g.addColorStop(.75,'rgba(142,216,255,.05)'); g.addColorStop(1,'rgba(142,216,255,.22)');
+    c.fillStyle=g; c.fillRect(0,0,VW,VH);
+    c.strokeStyle='rgba(142,216,255,'+(.35+Math.sin(gameT*.12)*.15)+')'; c.lineWidth=5;
+    c.strokeRect(2.5,2.5,VW-5,VH-5);
+    c.font='bold 15px Rubik,sans-serif'; c.textAlign='center';
+    c.fillStyle='rgba(8,20,40,.55)'; rr(c,VW/2-104,12,208,30,14); c.fill();
+    c.fillStyle='#BFE9FF';
+    c.fillText('🧊 Frozen — '+Math.ceil(LV.freeze/60)+' s until you can answer',VW/2,32);
+    c.textAlign='left';
+  }
   if(fade<1){ c.fillStyle='rgba(6,4,18,'+(1-fade)+')'; c.fillRect(0,0,VW,VH) }
 }
 
@@ -2931,7 +2998,7 @@ function netPos(m){
   const now=(window.performance&&performance.now)?performance.now():Date.now();
   const b=NET.buf, last=b[b.length-1];
   if(last){ const d=now-last.t; if(d>30&&d<2000) NET.gap=NET.gap*.7+d*.3 }   /* learn the real rate */
-  b.push({t:now,x:m.x,y:m.y,d:m.d,f:m.f,b:m.b,fly:m.fly});
+  b.push({t:now,x:m.x,y:m.y,d:m.d,f:m.f,b:m.b,fly:m.fly,fz:m.fz});
   if(b.length>6) b.shift();
 }
 function mateAt(now){
@@ -2939,7 +3006,7 @@ function mateAt(now){
   const newest=b[b.length-1];
   const age=now-newest.t;
   /* nothing for a while: stop guessing, park the ghost and say so */
-  if(age>1200) return {x:newest.x,y:newest.y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:age};
+  if(age>1200) return {x:newest.x,y:newest.y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,fz:newest.fz,stale:age};
   const want=now-Math.max(MATE_DELAY,NET.gap*1.3);
   if(want>=newest.t){                                    /* ahead of the last packet: glide on */
     const prev=b[b.length-2];
@@ -2948,19 +3015,19 @@ function mateAt(now){
       const k=Math.min(want-newest.t,MATE_EXTRA)/(newest.t-prev.t);
       x+=(newest.x-prev.x)*k; y+=(newest.y-prev.y)*k;
     }
-    return {x,y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:0};
+    return {x,y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,fz:newest.fz,stale:0};
   }
   for(let i=b.length-1;i>0;i--){
     const a=b[i-1], z=b[i];
     if(want>=a.t&&want<=z.t){
       const k=(want-a.t)/Math.max(1,z.t-a.t);
       if(Math.abs(z.x-a.x)>260||Math.abs(z.y-a.y)>260)     /* a real jump (respawn, new level): snap */
-        return {x:z.x,y:z.y,d:z.d,f:z.f,busy:z.b,fly:z.fly,stale:0};
-      return {x:a.x+(z.x-a.x)*k, y:a.y+(z.y-a.y)*k, d:z.d, f:k>.5?z.f:a.f, busy:z.b, fly:z.fly, stale:0};
+        return {x:z.x,y:z.y,d:z.d,f:z.f,busy:z.b,fly:z.fly,fz:z.fz,stale:0};
+      return {x:a.x+(z.x-a.x)*k, y:a.y+(z.y-a.y)*k, d:z.d, f:k>.5?z.f:a.f, busy:z.b, fly:z.fly, fz:z.fz, stale:0};
     }
   }
   const o=b[0];
-  return {x:o.x,y:o.y,d:o.d,f:o.f,busy:o.b,fly:o.fly,stale:0};
+  return {x:o.x,y:o.y,d:o.d,f:o.f,busy:o.b,fly:o.fly,fz:o.fz,stale:0};
 }
 /* ---- the partner's character, drawn as a translucent ghost ---- */
 function drawMate(c){
@@ -2982,7 +3049,12 @@ function drawMate(c){
   else { c.fillStyle='#38E1C8'; rr(c,m.x,m.y,P.w,P.h,8); c.fill() }
   c.globalAlpha=1;
   /* say out loud why the partner is not moving, so a pause never reads as a bug */
-  if(m.busy){
+  if(m.fz){
+    const by=m.y-26, bw=68;
+    c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-bw/2,by-14,bw,20,9); c.fill();
+    c.fillStyle='#BFE9FF'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
+    c.fillText('🧊 '+m.fz+'s',cx,by);
+  } else if(m.busy){
     const by=m.y-26, bw=62;
     c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-bw/2,by-14,bw,20,9); c.fill();
     c.fillStyle='#FFE08A'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
@@ -3007,11 +3079,11 @@ function netTick(){
   const me=NET.me();
   const H=heroSheet(S.hero);
   const msg={t:'pos',x:Math.round(P.x),y:Math.round(P.y),d:P.face,f:heroFrame(H&&H.meta),
-             b:LV.busy?1:0, fly:P.fly>0?1:0,
+             b:LV.busy?1:0, fly:P.fly>0?1:0, fz:LV.freeze>0?Math.ceil(LV.freeze/60):0,
              hero:me.hero,nm:me.name,a:me.avatar};
   /* while nothing moves (a question is open, the hero stands still) one packet every
      600 ms is enough to say "still here" — the rest of the budget stays for real motion */
-  const sig=msg.x+','+msg.y+','+msg.d+','+msg.f+','+msg.b;
+  const sig=msg.x+','+msg.y+','+msg.d+','+msg.f+','+msg.b+','+msg.fz;
   if(sig===NET.lastSig&&now-NET.lastSend<600) return;
   NET.lastSig=sig; NET.lastSend=now;
   msg.ts=Math.round(now);

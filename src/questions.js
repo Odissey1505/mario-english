@@ -155,6 +155,7 @@ function ask(q){
     askActive=true; clearKeys();
     const card=$('#q-card');
     let done=false, second=false, shielded=false, tId=null, tLeft=q.time||0, helpTried=false, rescued=false;
+    let answered=false;                 /* one answer per question — no tapping the right one afterwards */
     const isHard=SESSION.diff===2;
     card.innerHTML='';
     /* head */
@@ -211,7 +212,7 @@ function ask(q){
         shuffle(wrong).slice(0,Math.max(1,q.options.length-2)).forEach(i=>optEls[i].classList.add('dim')); }]);
     bl.push(['dictionary','📗 Dictionary',()=>{ if(!spend('dictionary'))return; sub.textContent=(q.sub?q.sub+' · ':'')+(q.clue||q.ee) }]);
     if(q.rule) bl.push(['grammar','📖 Rule',()=>{ if(!spend('grammar'))return; sub.textContent=q.rule }]);
-    bl.push(['second','🔄 Second chance',()=>{ if(!spend('second'))return; second=true; toast('One mistake will be forgiven') }]);
+    bl.push(['second','🔄 Forgive a mistake',()=>{ if(!spend('second'))return; second=true; toast('One wrong answer will cost you nothing') }]);
     if(tLeft) bl.push(['time','⏳ Freeze timer',()=>{ if(!spend('time'))return; clearInterval(tId); tId=null; if(bar) bar.style.background='var(--cyan)' }]);
     bl.forEach(([id,label,fn])=>{ const b=document.createElement('button'); b.className='bchip'; b.textContent=label+' ×'+boostLeft(id);
       b.disabled=!boostLeft(id); b.onclick=()=>{fn(); b.textContent=label+' ×'+boostLeft(id); b.disabled=!boostLeft(id)}; boostRow.appendChild(b) });
@@ -237,10 +238,14 @@ function ask(q){
       return String(q.correct).split('|').some(c=>sameAnswer(c,val));
     }
     function pick(val){
-      if(done) return;
+      if(done||answered) return;
       let ok=isRight(val);
-      if(!ok && second){ second=false; toast('Try once more'); Snd.beep(400,.08); 
-        if(q.kind==='choice'&&val!==null) optEls[val].classList.add('dim'); return; }
+      /* the moment an answer is in, the whole answer area stops taking clicks —
+         including while a co-op partner is being asked to rescue it */
+      answered=true; body.style.pointerEvents='none';
+      /* Second Chance forgives the mistake — it never hands back the question. Once an
+         answer is in, the right option can no longer be tapped: guessing must cost something. */
+      if(!ok && second){ second=false; shielded=true; }
       /* co-op: hand the question to your partner before anything else is spent on it */
       if(!ok && NET.on && NET.mate && NET.mode==='coop' && q.kind==='choice' && !helpTried){
         helpTried=true; toast('Asking your partner…');
@@ -258,6 +263,8 @@ function ask(q){
       if(!ok && LV && S.gear.eq.helmet==='helm-guard' && !LV.guardUsed){ LV.guardUsed=true; shielded=true; }
       else if(!ok && boostLeft('shield')){ useBoost('shield'); shielded=true; }
       done=true; clearInterval(tId);
+      /* a mistake nobody absorbed costs ten seconds of silence */
+      if(!ok && !shielded && LV) startFreeze();
       if(q.kind==='choice'){ optEls.forEach((b,i)=>{ b.onclick=null; if(i===q.correct) b.classList.add('ok'); });
         if(!ok&&val!==null&&optEls[val]) optEls[val].classList.add('bad'); }
       optEls.forEach(e=>{ if(e.tagName==='BUTTON'&&e.className.includes('big-btn')) e.disabled=true });
@@ -269,6 +276,8 @@ function ask(q){
         : (rescued?'<b>🤝 Your partner answered it for you</b><br>':shielded?'<b>🛡️ A boost protected you</b><br>':'<b>❌ Not quite</b><br>')+
           'Correct answer: <b>'+ (q.kind==='choice'? q.options[q.correct] : q.answer) +'</b><br>'+expl;
       if(!isHard && q.clue && q.clue!==expl) fb.innerHTML+='<br><span style="opacity:.7;font-size:12.5px">'+q.clue+'</span>';
+      if(!ok&&!shielded&&LV) fb.innerHTML+='<br><span style="color:#8ED8FF">🧊 Frozen for 10 seconds — '+
+        'read the explanation while you wait, then carry on collecting coins.</span>';
       ok?Snd.good():Snd.bad();
       const next=document.createElement('button'); next.className='big-btn'; next.style.marginTop='14px';
       next.textContent=ok?'Continue →':'Got it →'; next.onclick=close; card.appendChild(next);

@@ -276,6 +276,20 @@ function draw(){
   drawWeather(c);
   c.drawImage(GRAD.vig,0,0);
   if(P.inv>60){ c.fillStyle='rgba(255,60,90,'+((P.inv-60)/30*.28)+')'; c.fillRect(0,0,VW,VH) }
+  /* frozen out of questions: a cold edge on the screen, so the state is never a mystery */
+  if(LV.freeze>0){
+    const g=c.createLinearGradient(0,0,0,VH);
+    g.addColorStop(0,'rgba(142,216,255,.22)'); g.addColorStop(.35,'rgba(142,216,255,.05)');
+    g.addColorStop(.75,'rgba(142,216,255,.05)'); g.addColorStop(1,'rgba(142,216,255,.22)');
+    c.fillStyle=g; c.fillRect(0,0,VW,VH);
+    c.strokeStyle='rgba(142,216,255,'+(.35+Math.sin(gameT*.12)*.15)+')'; c.lineWidth=5;
+    c.strokeRect(2.5,2.5,VW-5,VH-5);
+    c.font='bold 15px Rubik,sans-serif'; c.textAlign='center';
+    c.fillStyle='rgba(8,20,40,.55)'; rr(c,VW/2-104,12,208,30,14); c.fill();
+    c.fillStyle='#BFE9FF';
+    c.fillText('🧊 Frozen — '+Math.ceil(LV.freeze/60)+' s until you can answer',VW/2,32);
+    c.textAlign='left';
+  }
   if(fade<1){ c.fillStyle='rgba(6,4,18,'+(1-fade)+')'; c.fillRect(0,0,VW,VH) }
 }
 

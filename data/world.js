@@ -28,7 +28,7 @@ const GEAR = [
 
 const BOOSTS = {
  shield:{ic:'🛡️',n:'Shield',d:'Ignores one wrong answer.',price:40},
- second:{ic:'🔄',n:'Second Chance',d:'Lets you answer one more time.',price:35},
+ second:{ic:'🔄',n:'Second Chance',d:'Forgives one wrong answer: no damage and no freeze. Tap it before you answer.',price:35},
  fifty:{ic:'✂️',n:'Fifty-Fifty',d:'Removes wrong options.',price:30},
  dictionary:{ic:'📗',n:'Dictionary',d:'Gives an extra clue about the word.',price:25},
  time:{ic:'⏳',n:'Time Freeze',d:'Stops the question timer.',price:30},

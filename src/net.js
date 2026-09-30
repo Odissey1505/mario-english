@@ -191,7 +191,7 @@ function netPos(m){
   const now=(window.performance&&performance.now)?performance.now():Date.now();
   const b=NET.buf, last=b[b.length-1];
   if(last){ const d=now-last.t; if(d>30&&d<2000) NET.gap=NET.gap*.7+d*.3 }   /* learn the real rate */
-  b.push({t:now,x:m.x,y:m.y,d:m.d,f:m.f,b:m.b,fly:m.fly});
+  b.push({t:now,x:m.x,y:m.y,d:m.d,f:m.f,b:m.b,fly:m.fly,fz:m.fz});
   if(b.length>6) b.shift();
 }
 function mateAt(now){
@@ -199,7 +199,7 @@ function mateAt(now){
   const newest=b[b.length-1];
   const age=now-newest.t;
   /* nothing for a while: stop guessing, park the ghost and say so */
-  if(age>1200) return {x:newest.x,y:newest.y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:age};
+  if(age>1200) return {x:newest.x,y:newest.y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,fz:newest.fz,stale:age};
   const want=now-Math.max(MATE_DELAY,NET.gap*1.3);
   if(want>=newest.t){                                    /* ahead of the last packet: glide on */
     const prev=b[b.length-2];
@@ -208,19 +208,19 @@ function mateAt(now){
       const k=Math.min(want-newest.t,MATE_EXTRA)/(newest.t-prev.t);
       x+=(newest.x-prev.x)*k; y+=(newest.y-prev.y)*k;
     }
-    return {x,y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,stale:0};
+    return {x,y,d:newest.d,f:newest.f,busy:newest.b,fly:newest.fly,fz:newest.fz,stale:0};
   }
   for(let i=b.length-1;i>0;i--){
     const a=b[i-1], z=b[i];
     if(want>=a.t&&want<=z.t){
       const k=(want-a.t)/Math.max(1,z.t-a.t);
       if(Math.abs(z.x-a.x)>260||Math.abs(z.y-a.y)>260)     /* a real jump (respawn, new level): snap */
-        return {x:z.x,y:z.y,d:z.d,f:z.f,busy:z.b,fly:z.fly,stale:0};
-      return {x:a.x+(z.x-a.x)*k, y:a.y+(z.y-a.y)*k, d:z.d, f:k>.5?z.f:a.f, busy:z.b, fly:z.fly, stale:0};
+        return {x:z.x,y:z.y,d:z.d,f:z.f,busy:z.b,fly:z.fly,fz:z.fz,stale:0};
+      return {x:a.x+(z.x-a.x)*k, y:a.y+(z.y-a.y)*k, d:z.d, f:k>.5?z.f:a.f, busy:z.b, fly:z.fly, fz:z.fz, stale:0};
     }
   }
   const o=b[0];
-  return {x:o.x,y:o.y,d:o.d,f:o.f,busy:o.b,fly:o.fly,stale:0};
+  return {x:o.x,y:o.y,d:o.d,f:o.f,busy:o.b,fly:o.fly,fz:o.fz,stale:0};
 }
 /* ---- the partner's character, drawn as a translucent ghost ---- */
 function drawMate(c){
@@ -242,7 +242,12 @@ function drawMate(c){
   else { c.fillStyle='#38E1C8'; rr(c,m.x,m.y,P.w,P.h,8); c.fill() }
   c.globalAlpha=1;
   /* say out loud why the partner is not moving, so a pause never reads as a bug */
-  if(m.busy){
+  if(m.fz){
+    const by=m.y-26, bw=68;
+    c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-bw/2,by-14,bw,20,9); c.fill();
+    c.fillStyle='#BFE9FF'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
+    c.fillText('🧊 '+m.fz+'s',cx,by);
+  } else if(m.busy){
     const by=m.y-26, bw=62;
     c.fillStyle='rgba(12,16,32,.72)'; rr(c,cx-bw/2,by-14,bw,20,9); c.fill();
     c.fillStyle='#FFE08A'; c.font='bold 11px Rubik,sans-serif'; c.textAlign='center';
@@ -267,11 +272,11 @@ function netTick(){
   const me=NET.me();
   const H=heroSheet(S.hero);
   const msg={t:'pos',x:Math.round(P.x),y:Math.round(P.y),d:P.face,f:heroFrame(H&&H.meta),
-             b:LV.busy?1:0, fly:P.fly>0?1:0,
+             b:LV.busy?1:0, fly:P.fly>0?1:0, fz:LV.freeze>0?Math.ceil(LV.freeze/60):0,
              hero:me.hero,nm:me.name,a:me.avatar};
   /* while nothing moves (a question is open, the hero stands still) one packet every
      600 ms is enough to say "still here" — the rest of the budget stays for real motion */
-  const sig=msg.x+','+msg.y+','+msg.d+','+msg.f+','+msg.b;
+  const sig=msg.x+','+msg.y+','+msg.d+','+msg.f+','+msg.b+','+msg.fz;
   if(sig===NET.lastSig&&now-NET.lastSend<600) return;
   NET.lastSig=sig; NET.lastSend=now;
   msg.ts=Math.round(now);

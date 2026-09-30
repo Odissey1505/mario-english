@@ -99,6 +99,29 @@ function tWipe(){ for(const id in FINGERS) tUp(id); stickOff() }
   addEventListener('blur',tWipe);
 })();
 
+/* ---------- the cost of a wrong answer ----------
+   A mistake freezes the learner out of questions for ten seconds. Running, jumping and
+   dodging all still work — only answering is on hold — so the penalty is felt without
+   turning into a dead stop, and there is no way to brute-force a question by guessing. */
+const FREEZE_TIME=600;                      /* 10 s at 60 fps */
+function startFreeze(){
+  if(!LV) return;
+  LV.freeze=FREEZE_TIME;
+  addFloat(P.x,P.y-34,'🧊 Frozen 10s','#8ED8FF');
+  burst(P.x+P.w/2,P.y+P.h/2,'#8ED8FF',16);
+  Snd.beep(300,.5,'sine',.10,-180);
+  if(NET.on&&NET.mate) netStat();
+  hud();
+}
+/* every question passes through here first */
+function chilled(){
+  if(!LV||!(LV.freeze>0)) return false;
+  const s=Math.ceil(LV.freeze/60);
+  addFloat(P.x,P.y-34,'🧊 '+s+'s','#8ED8FF');
+  toast('Frozen after that mistake — '+s+' s left',900);
+  Snd.beep(230,.09,'sine',.07,-40);
+  return true;
+}
 const ATTACK_REACH=170, ATTACK_HEIGHT=132;
 const SUPER_CHARGES=5, SUPER_TIME=120, FLY_TOP=46;   /* super jump: 5 flights, ~2 s each */
 /* answer streak → higher jumps for 30 seconds (30 s ≈ 1800 frames at 60 fps) */
@@ -152,7 +175,7 @@ function startLevel(worldId,diff,opts={}){
   LV.guardUsed=false; LV.freeHint=false; LV.magicSword=false; LV.busy=false; LV.paused=false;
   LV.startedAt=Date.now(); LV.mistakes=[]; LV.secrets=0; LV.quests=0;
   LV.stats={ok:0,bad:0,streak:0,best:0,boostsUsed:0,mobs:0};
-  LV.jumpMult=1; LV.jumpT=0;
+  LV.jumpMult=1; LV.jumpT=0; LV.freeze=0;
   LV.boosts={}; S.slots.forEach(id=>{ if(id&&S.boosts[id]>0){ LV.boosts[id]=S.boosts[id]; } });
   P.x=100; P.y=GYTOP-P.h-2; P.vx=P.vy=0; P.inv=0; P.atk=0; P.fly=0; P.safeX=100; camX=0; particles=[]; floats=[];
   LV.superLeft=SUPER_CHARGES+(S.gear.eq.boots==='boots-jump'?1:0);
@@ -197,6 +220,9 @@ function hud(){
   const jb=$('#jumpbox');
   if(LV.jumpT>0){ jb.style.display=''; jb.textContent='⬆️ ×'+LV.jumpMult+' · '+Math.ceil(LV.jumpT/60)+'s' }
   else jb.style.display='none';
+  const fz=$('#freezebox');
+  if(fz){ if(LV.freeze>0){ fz.style.display=''; fz.textContent='🧊 '+Math.ceil(LV.freeze/60)+'s' }
+          else fz.style.display='none' }
   $('#superbox').textContent='🚀 ×'+(LV.superLeft||0);
   $('#superbox').style.opacity=LV.superLeft?1:.45;
   const ts=$('#ts'); if(ts) ts.classList.toggle('empty',!LV.superLeft);
@@ -301,7 +327,9 @@ function addCoins(n,x,y){
 
 /* ---------- interaction: blocks, monsters, boss ---------- */
 async function hitBlock(b){
-  if(b.used||LV.busy) return; LV.busy=true; Snd.block();
+  if(b.used||LV.busy) return;
+  if(chilled()) return;
+  LV.busy=true; Snd.block();
   try{
   const q=QM.vocab(SESSION.diff);
   const {ok,shielded}=await ask(q);
@@ -326,7 +354,9 @@ async function hitBlock(b){
 }
 
 async function fight(e){
-  if(LV.busy||!e.alive) return; LV.busy=true;
+  if(LV.busy||!e.alive) return;
+  if(chilled()) return;
+  LV.busy=true;
   try{
   if(S.gear.eq.weapon==='sword-magic'&&!LV.magicSword&&!e.strong&&e.maxhp===1){
     LV.magicSword=true; killEnemy(e,true); LV.busy=false; return;
@@ -356,7 +386,9 @@ function killEnemy(e,magic){
 }
 
 async function bossAttackTry(){
-  if(LV.busy||!LV.boss.active||LV.boss.dead) return; LV.busy=true;
+  if(LV.busy||!LV.boss.active||LV.boss.dead) return;
+  if(chilled()) return;
+  LV.busy=true;
   try{
   LV.bossQids=LV.bossQids||[];
   const q=QM.grammar(SESSION.diff,LV.bossQids);
@@ -381,11 +413,11 @@ async function interact(){
   if(LV.busy) return;
   try{
   const near=(o,d=70)=>Math.abs((o.x+(o.w||40)/2)-(P.x+P.w/2))<d && Math.abs((o.y||GYTOP)-P.y)<120;
-  for(const w of LV.wells) if(!w.used&&near(w,60)){ LV.busy=true; clearKeys();
+  for(const w of LV.wells) if(!w.used&&near(w,60)){ if(chilled()) return; LV.busy=true; clearKeys();
       let r=false; try{ r=await runQuest() }catch(err){ unstick('quest: '+err.message) }
       w.used=true; LV.quests++; S.stats.quests++; daily('d-quest',1); if(r) applyQuestReward();
       clearKeys(); LV.busy=false; return; }
-  for(const st of LV.stones) if(near(st,58)){ LV.busy=true;
+  for(const st of LV.stones) if(near(st,58)){ if(chilled()) return; LV.busy=true;
       try{ await runeStone(st) }catch(err){ unstick('stone: '+err.message) }
       LV.busy=false; return; }
   for(const c of LV.chests) if(!c.open&&near(c,60)){
@@ -522,6 +554,15 @@ function update(dt){
   LV.enemies.forEach(e=>{ if(e.flash>0) e.flash-=dt });
   if(LV.jumpT>0){ LV.jumpT-=dt; if(LV.jumpT<=0){ LV.jumpT=0; LV.jumpMult=1; hud(); addFloat(P.x,P.y-20,'jump boost over','#9E95CF') }
     else if(Math.floor(LV.jumpT)%60===0) hud(); }
+  if(LV.freeze>0){
+    const was=Math.ceil(LV.freeze/60);
+    LV.freeze-=dt;
+    if(LV.freeze<=0){ LV.freeze=0; hud(); addFloat(P.x,P.y-24,'🔥 Thawed — answer again','#FFC84A');
+      Snd.beep(660,.22,'sine',.09,220); toast('You can answer again'); }
+    else { if(Math.ceil(LV.freeze/60)!==was) hud();
+      if(Math.random()<.25) particles.push({x:P.x+rint(-16,P.w+16),y:P.y-10,vx:(Math.random()-.5)*.6,vy:.7+Math.random(),
+                                            c:'rgba(142,216,255,.8)',life:38,g:.008,s:3}); }
+  }
   if(shake>0) shake=Math.max(0,shake-.45*dt);
   if(fade<1) fade=Math.min(1,fade+.03*dt);
   updateWeather(dt);
