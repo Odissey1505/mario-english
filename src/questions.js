@@ -35,8 +35,11 @@ const QM={
     const canScramble=oneWord&&bare.length<=11, canType=w.en.length<=20;
     let types=[];
     if(w.ic&&EM) types.push('pic','name','name');
-    if(w.def) types.push('def','def');
-    types.push('listen','odd','spell');
+    if(w.def) types.push('def','def','def');
+    /* a word with an English definition is never just played aloud to be repeated:
+       the learner reads what it means and picks the word. Listening is a fallback only. */
+    if(!w.def) types.push('listen');
+    types.push('odd','spell');
     types.push('letters'); if(canScramble) types.push('scramble');
     if(diff===2){ types.push('spell'); if(canType) types.push('type') }
     if(diff===0) types=types.filter(t=>['pic','name','listen','odd','letters','def'].includes(t));
@@ -45,8 +48,8 @@ const QM={
     else if(AM==='typing'){ types=['letters'];
       if(canScramble) types.push('scramble');
       if(canType&&diff>0) types.push('type'); }
-    if(!types.length) types=AM==='typing'?['letters']:['listen','odd','spell'];
-    const safe=AM==='typing'?'letters':'listen';   /* fallback that still honours the chosen mode */
+    if(!types.length) types=AM==='typing'?['letters']:(w.def?['def','odd','spell']:['listen','odd','spell']);
+    const safe=AM==='typing'?'letters':(w.def?'def':'listen');   /* fallback that still honours the chosen mode */
     const type=forceType||rnd(types);
     const base={tag:'Vocabulary · '+topicName,ref:{type:'word',id:w.en,word:w},clue,
                 ex:explain,ee:explain,tr:clue,time:DIFF[diff].timer,kind:'choice',listen:null,pic:false};
@@ -96,6 +99,8 @@ const QM={
     if(type==='scramble'){ const letters=shuffle(w.en.replace(/ /g,'').split(''));
       return {...base,kind:'seq',prompt:'Put the letters in the right order',sub:clue,
         tokens:letters,correct:w.en.replace(/ /g,''),answer:w.en,listen:w.en}; }
+    if(w.def) return {...base,kind:'input',prompt:'Write the word that means this',sub:'"'+w.def+'"',
+                      correct:w.en,answer:w.en,listen:w.en};
     return {...base,kind:'input',prompt:'Listen and type the word',sub:clue,correct:w.en,answer:w.en,listen:w.en,autoListen:true};
   },
 
@@ -131,7 +136,12 @@ const QM={
     }
     const base={tag:'Grammar · '+GRAMMARBANK[t].n,ref:{type:'gram',id:t,qid:t+i},ex:q.ee,ee:q.ee,clue:q.ee,
                 time:DIFF[diff].timer,rule:q.ee};
-    if(q.k==='ch') return {...base,kind:'choice',prompt:q.q,sub:'Choose the correct option',options:q.o,correct:q.a,answer:q.o[q.a]};
+    /* The options are authored with the right answer in a fixed place, and a learner who
+       notices that stops reading the sentence. Shuffle them — but only for 'ch': in an
+       error-spotting question the options are the sentence itself, in order. */
+    if(q.k==='ch'){ const ix=shuffle(q.o.map((_,n)=>n));
+      return {...base,kind:'choice',prompt:q.q,sub:'Choose the correct option',
+              options:ix.map(n=>q.o[n]),correct:ix.indexOf(q.a),answer:q.o[q.a]}; }
     if(q.k==='er') return {...base,kind:'choice',prompt:q.q,sub:'Tap the mistake',options:q.o,correct:q.a,answer:q.o[q.a]};
     if(q.k==='in') return {...base,kind:'input',prompt:q.q,sub:'Type your answer in English',correct:q.a,answer:q.a.split('|')[0]};
     return {...base,kind:'seq',prompt:q.q||'Put the words in the correct order',sub:'Tap the words one by one',

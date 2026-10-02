@@ -14,7 +14,7 @@ echo "── the project as a web server serves it ─────────"
 node tests/t_split.mjs 2>&1 | grep -v "Not implemented\|Could not load"
 echo
 echo "── game, content and rules (against dist) ────────"
-for t in t_reg t_answer t_hurt t_dup t_builtin t_course t_courses t_hw t_sensei t_ui_opts t_default t_netopics t_netsmooth t_netfmt t_touch t_invite t_library t_freeze; do
+for t in t_reg t_answer t_hurt t_dup t_builtin t_course t_courses t_hw t_sensei t_ui_opts t_default t_netopics t_netsmooth t_netfmt t_touch t_invite t_library t_freeze t_upper; do
   echo "· $t"
   node "tests/$t.mjs" 2>&1 | grep -v "Not implemented\|Could not load" | sed 's/^/    /'
 done
