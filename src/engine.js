@@ -333,8 +333,13 @@ async function hitBlock(b){
   try{
   const q=QM.vocab(SESSION.diff);
   const {ok,shielded}=await ask(q);
-  b.used=true; b.pop=12;
+  b.pop=12;
   const t=b.type;
+  /* A block that is holding a shard the mission still needs is not spent on a wrong answer —
+     otherwise one mistake can put the level out of reach for good. The ten-second freeze is
+     the cost of the mistake; the shard waits. */
+  const holdsMission = t==='purple' && LV.mission==='shards' && LV.shardsGot<LV.needShards;
+  b.used = ok||shielded||!holdsMission;
   if(ok||shielded){
     const lucky=S.gear.eq.amulet==='amu-luck'&&Math.random()<.5;
     if(t==='yellow') addCoins(rint(3,6)+(lucky?3:0),b.x,b.y);
@@ -347,6 +352,8 @@ async function hitBlock(b){
     else if(t==='red'){ if(Math.random()<.7) addCoins(rint(8,14),b.x,b.y); else { addFloat(b.x,b.y,'Trap!','#FF5C7A'); hurt(1) } }
     else if(t==='gold'){ addCoins(rint(12,20)+(lucky?6:0),b.x,b.y); if(LV.mission==='key'&&!LV.hasKey&&Math.random()<.35){LV.hasKey=true; addFloat(b.x,b.y,'🔑 Golden key','#FFE08A')} }
     burst(b.x+22,b.y,'#FFC84A',14);
+  } else if(holdsMission){
+    addFloat(b.x,b.y-20,'💎 still inside — come back','#B583FF');
   } else { addCoins(1,b.x,b.y); addFloat(b.x,b.y-20,'small reward','#9E95CF'); }
   hud();
   }catch(err){ unstick('hitBlock: '+err.message) }
@@ -439,12 +446,33 @@ async function interact(){
 /* rune stone: an endless practice spot — answer a question, earn coins.
    The reward shrinks with every use of the same stone (never below 2), so a level can
    always be finished, but farming stays slow enough to keep the pace. */
+/* what is still out there that could hand over a missing mission item */
+function shardSourcesLeft(){
+  if(!LV||LV.mission!=='shards') return 0;
+  return LV.blocks.filter(b=>!b.used&&b.type==='purple').length + LV.wells.filter(w=>!w.used).length;
+}
+function keySourcesLeft(){
+  if(!LV||LV.mission!=='key'||LV.hasKey) return 0;
+  return LV.chests.filter(c=>!c.open).length + LV.blocks.filter(b=>!b.used&&b.type==='gold').length;
+}
 async function runeStone(st){
   const q=Math.random()<.5?QM.vocab(SESSION.diff):QM.grammar(SESSION.diff);
   const {ok,shielded}=await ask(q);
   if(ok||shielded){
-    const r=Math.max(2,6-st.used); st.used++;
-    addCoins(r,st.x+st.w/2,st.y); Snd.shard(); burst(st.x+st.w/2,st.y+10,'#38E1C8',12);
+    /* A rune stone never runs out, so it is also the promise that a level can always be finished:
+       when nothing else on the map can still give the missing shard or key, the stone gives it. */
+    if(LV.mission==='shards'&&LV.shardsGot<LV.needShards&&!shardSourcesLeft()){
+      LV.shardsGot++; addFloat(st.x,st.y,'+💎 shard from the rune','#B583FF'); Snd.shard();
+      toast('The rune gave up a crystal shard');
+      if(NET.mode==='coop') NET.send({t:'ev',k:'shard',n:LV.shardsGot});
+    } else if(LV.mission==='key'&&!LV.hasKey&&!keySourcesLeft()){
+      LV.hasKey=true; addFloat(st.x,st.y,'🔑 Golden key','#FFE08A'); Snd.shard();
+      toast('The rune was hiding the golden key');
+      if(NET.mode==='coop') NET.send({t:'ev',k:'key'});
+    } else {
+      const r=Math.max(2,6-st.used); st.used++;
+      addCoins(r,st.x+st.w/2,st.y); Snd.shard(); burst(st.x+st.w/2,st.y+10,'#38E1C8',12);
+    }
   } else { addFloat(st.x,st.y,'no coins this time','#9E95CF'); st.used=Math.max(0,st.used-1) }
   hud();
 }
@@ -462,9 +490,14 @@ function tryFinish(){
   const miss=[];
   if(LV.coins<LV.needCoins) miss.push('You need '+(LV.needCoins-LV.coins)+' more coins — answer questions at a rune stone 💠.');
   if(!LV.bossDead) miss.push('Defeat the '+LV.world.boss+'.');
-  if(LV.mission==='key'&&!LV.hasKey) miss.push('Find the golden key.');
+  if(LV.mission==='key'&&!LV.hasKey) miss.push(keySourcesLeft()
+      ? 'Find the golden key — try the chest 🧰 and the gold blocks.'
+      : 'Find the golden key — answer at a rune stone 💠 and it will give it up.');
   if(LV.mission==='key'&&!LV.freed) miss.push('Save the wizard.');
-  if(LV.mission==='shards'&&LV.shardsGot<LV.needShards) miss.push('Collect '+(LV.needShards-LV.shardsGot)+' more crystal shards.');
+  if(LV.mission==='shards'&&LV.shardsGot<LV.needShards) miss.push('Collect '+(LV.needShards-LV.shardsGot)+
+    ' more crystal shards — '+(shardSourcesLeft()
+      ? 'purple blocks 🟣 and wells still have them.'
+      : 'a rune stone 💠 will give you one.'));
   if(miss.length){ toast(miss[0],2600); return }
   finishLevel(true);
 }

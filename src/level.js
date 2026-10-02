@@ -76,7 +76,44 @@ function buildLevel(worldId,diff){
   while(missing>0){ L.coinsArr.push({x:rint(300,L.w-300),y:GYTOP-rint(50,110)}); missing-- }
   /* boss */
   L.boss=mkBoss(W,diff,L.bossX);
-  /* crystal shards for the shards mission come from purple blocks and quests */
+  /* ---- the mission must be finishable ----
+     Shards come from purple blocks and mini-quests, and both used to be left to chance: on Easy
+     a level often held a single purple block while the mission asked for three, so the level
+     could not be finished at all. Guarantee a real surplus — needShards + 2 — by recolouring
+     blocks that are already placed (so the layout and its reachability do not change), and only
+     adding new ones if the level is too small to hold enough. */
+  if(L.mission==='shards'){
+    const want=L.needShards+2;
+    /* secret blocks sit on a high ledge that only a super jump reaches, so they are a bonus,
+       never part of the guarantee — the promise is five shards on the normal-jump route. */
+    const plain=b=>b.type==='purple'&&!b.secret;
+    let have=L.blocks.filter(plain).length;
+    if(have<want){
+      /* recolour the least precious blocks first, spread along the level, never all in one place */
+      const order=['yellow','red','green','blue','gold'];
+      for(const t of order){
+        const pool=L.blocks.filter(b=>b.type===t&&!b.secret);
+        for(let i=pool.length-1;i>=0&&have<want;i--){
+          /* keep at least one of each kind so a level never loses a whole block type */
+          if(L.blocks.filter(b=>b.type===t).length<=1) break;
+          pool[i].type='purple'; have++;
+        }
+        if(have>=want) break;
+      }
+    }
+    while(have<want){                       /* a very short level: hang extra blocks over the ground */
+      let gx=0, gy=0;
+      for(let tries=0;tries<30;tries++){
+        gx=rint(400,Math.max(500,L.w-400)); gy=GYTOP-145-(have%2)*58;
+        const solidBelow=L.ground.some(g=>gx+22>=g.x&&gx+22<=g.x+g.w);       /* never over a pit */
+        const clash=L.blocks.some(b=>Math.abs(b.x-gx)<60&&Math.abs(b.y-gy)<60);
+        if(solidBelow&&!clash) break;
+      }
+      L.blocks.push({x:gx,y:gy,w:44,h:44,type:'purple',used:false});
+      have++;
+    }
+    L.shardBlocks=have;    /* reachable without a super jump */
+  }
   return L;
 }
 

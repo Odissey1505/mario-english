@@ -1152,6 +1152,8 @@ const QM={
     const type=forceType||rnd(types);
     const base={tag:'Vocabulary · '+topicName,ref:{type:'word',id:w.en,word:w},clue,
                 ex:explain,ee:explain,tr:clue,time:DIFF[diff].timer,kind:'choice',listen:null,pic:false};
+    /* Only the listening task carries audio. Everywhere else a 🔊 button would simply read the
+       answer out, which turns "which word means this" into a free point. */
     /* start with the answer's own value so a distractor can never look identical to it
        (two different words can share an emoji, for instance) */
     const distract=(n,fn)=>{ const seen=new Set([fn(w)]); const res=[];
@@ -1160,13 +1162,13 @@ const QM={
     if(type==='pic'){ const ds=distract(nOpt-1,o=>o.ic).filter(o=>o.ic);
       if(ds.length<2) return this.vocab(diff,safe,1);
       const opts=shuffle([w,...ds]); return {...base,pic:true,prompt:'Which picture shows "'+w.en+'"?',sub:'Tap the right picture',
-        options:opts.map(o=>o.ic),correct:opts.indexOf(w),answer:w.ic+' '+w.en,listen:w.en}; }
+        options:opts.map(o=>o.ic),correct:opts.indexOf(w),answer:w.ic+' '+w.en}; }
     if(type==='name'){ const ds=distract(nOpt-1,o=>o.en);
       return (()=>{ const opts=shuffle([w,...ds]); return {...base,prompt:'What is this in English?',sub:w.ic+'   ',
-        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en,listen:w.en} })(); }
+        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en} })(); }
     if(type==='def'){ const ds=distract(nOpt-1,o=>o.en);
       const opts=shuffle([w,...ds]); return {...base,prompt:'Which word means this?',sub:'"'+w.def+'"',
-        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en,listen:w.en}; }
+        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en}; }
     if(type==='listen'){ const ds=distract(nOpt-1,o=>o.en);
       const opts=shuffle([w,...ds]); return {...base,prompt:'Listen and choose the word',sub:'Tap the speaker to hear it again',
         options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en,listen:w.en,autoListen:true}; }
@@ -1174,7 +1176,7 @@ const QM={
       let tries=0; while(wrong.size<nOpt-1&&tries++<20){ const m=this.misspell(w.en); if(m!==w.en) wrong.add(m) }
       if(wrong.size<2) return this.vocab(diff,safe,1);
       const opts=shuffle([w.en,...[...wrong]]);
-      return {...base,prompt:'Choose the correct spelling',sub:clue,options:opts,correct:opts.indexOf(w.en),answer:w.en,listen:w.en}; }
+      return {...base,prompt:'Choose the correct spelling',sub:clue,options:opts,correct:opts.indexOf(w.en),answer:w.en}; }
     if(type==='odd'){ const otherTopics=Object.keys(WORDBANK).filter(t=>t!==w.topic);
       const same=shuffle(wordsOf(w.topic,w.lv).filter(x=>x.en!==w.en)).slice(0,2);
       /* the same word can live in two topics (fish is an animal and a food), so the odd
@@ -1185,7 +1187,7 @@ const QM={
       if(!alien||same.length<2) return this.vocab(diff,safe,1);
       const opts=shuffle([w,...same,alien]);
       return {...base,ref:{type:'word',id:alien.en,word:alien},prompt:'Which word does not belong?',
-        sub:'Three words share a topic, one does not',
+        sub:'One of these four comes from a different lesson',
         options:opts.map(o=>o.en),correct:opts.indexOf(alien),answer:alien.en,
         ex:alien.en+' is about '+WORDBANK[alien.topic].n+'; the others are about '+topicName+'.',
         ee:alien.en+' is about '+WORDBANK[alien.topic].n+'.',clue:'Look at the topic of each word'}; }
@@ -1194,12 +1196,12 @@ const QM={
       const n=clamp(Math.round(bare.length*share),1,9);
       let t=0; while(hide.size<n&&t++<40){ const i=rint(0,chars.length-1); if(chars[i]!==' ') hide.add(i) }
       const masked=chars.map((c,i)=>hide.has(i)?'_':c).join(' ');
-      return {...base,kind:'input',prompt:'Complete the word',sub:masked+'   ·   '+clue,correct:w.en,answer:w.en,listen:w.en}; }
+      return {...base,kind:'input',prompt:'Complete the word',sub:masked+'   ·   '+clue,correct:w.en,answer:w.en}; }
     if(type==='scramble'){ const letters=shuffle(w.en.replace(/ /g,'').split(''));
       return {...base,kind:'seq',prompt:'Put the letters in the right order',sub:clue,
-        tokens:letters,correct:w.en.replace(/ /g,''),answer:w.en,listen:w.en}; }
+        tokens:letters,correct:w.en.replace(/ /g,''),answer:w.en}; }
     if(w.def) return {...base,kind:'input',prompt:'Write the word that means this',sub:'"'+w.def+'"',
-                      correct:w.en,answer:w.en,listen:w.en};
+                      correct:w.en,answer:w.en};
     return {...base,kind:'input',prompt:'Listen and type the word',sub:clue,correct:w.en,answer:w.en,listen:w.en,autoListen:true};
   },
 
@@ -1490,7 +1492,44 @@ function buildLevel(worldId,diff){
   while(missing>0){ L.coinsArr.push({x:rint(300,L.w-300),y:GYTOP-rint(50,110)}); missing-- }
   /* boss */
   L.boss=mkBoss(W,diff,L.bossX);
-  /* crystal shards for the shards mission come from purple blocks and quests */
+  /* ---- the mission must be finishable ----
+     Shards come from purple blocks and mini-quests, and both used to be left to chance: on Easy
+     a level often held a single purple block while the mission asked for three, so the level
+     could not be finished at all. Guarantee a real surplus — needShards + 2 — by recolouring
+     blocks that are already placed (so the layout and its reachability do not change), and only
+     adding new ones if the level is too small to hold enough. */
+  if(L.mission==='shards'){
+    const want=L.needShards+2;
+    /* secret blocks sit on a high ledge that only a super jump reaches, so they are a bonus,
+       never part of the guarantee — the promise is five shards on the normal-jump route. */
+    const plain=b=>b.type==='purple'&&!b.secret;
+    let have=L.blocks.filter(plain).length;
+    if(have<want){
+      /* recolour the least precious blocks first, spread along the level, never all in one place */
+      const order=['yellow','red','green','blue','gold'];
+      for(const t of order){
+        const pool=L.blocks.filter(b=>b.type===t&&!b.secret);
+        for(let i=pool.length-1;i>=0&&have<want;i--){
+          /* keep at least one of each kind so a level never loses a whole block type */
+          if(L.blocks.filter(b=>b.type===t).length<=1) break;
+          pool[i].type='purple'; have++;
+        }
+        if(have>=want) break;
+      }
+    }
+    while(have<want){                       /* a very short level: hang extra blocks over the ground */
+      let gx=0, gy=0;
+      for(let tries=0;tries<30;tries++){
+        gx=rint(400,Math.max(500,L.w-400)); gy=GYTOP-145-(have%2)*58;
+        const solidBelow=L.ground.some(g=>gx+22>=g.x&&gx+22<=g.x+g.w);       /* never over a pit */
+        const clash=L.blocks.some(b=>Math.abs(b.x-gx)<60&&Math.abs(b.y-gy)<60);
+        if(solidBelow&&!clash) break;
+      }
+      L.blocks.push({x:gx,y:gy,w:44,h:44,type:'purple',used:false});
+      have++;
+    }
+    L.shardBlocks=have;    /* reachable without a super jump */
+  }
   return L;
 }
 
@@ -1851,8 +1890,13 @@ async function hitBlock(b){
   try{
   const q=QM.vocab(SESSION.diff);
   const {ok,shielded}=await ask(q);
-  b.used=true; b.pop=12;
+  b.pop=12;
   const t=b.type;
+  /* A block that is holding a shard the mission still needs is not spent on a wrong answer —
+     otherwise one mistake can put the level out of reach for good. The ten-second freeze is
+     the cost of the mistake; the shard waits. */
+  const holdsMission = t==='purple' && LV.mission==='shards' && LV.shardsGot<LV.needShards;
+  b.used = ok||shielded||!holdsMission;
   if(ok||shielded){
     const lucky=S.gear.eq.amulet==='amu-luck'&&Math.random()<.5;
     if(t==='yellow') addCoins(rint(3,6)+(lucky?3:0),b.x,b.y);
@@ -1865,6 +1909,8 @@ async function hitBlock(b){
     else if(t==='red'){ if(Math.random()<.7) addCoins(rint(8,14),b.x,b.y); else { addFloat(b.x,b.y,'Trap!','#FF5C7A'); hurt(1) } }
     else if(t==='gold'){ addCoins(rint(12,20)+(lucky?6:0),b.x,b.y); if(LV.mission==='key'&&!LV.hasKey&&Math.random()<.35){LV.hasKey=true; addFloat(b.x,b.y,'🔑 Golden key','#FFE08A')} }
     burst(b.x+22,b.y,'#FFC84A',14);
+  } else if(holdsMission){
+    addFloat(b.x,b.y-20,'💎 still inside — come back','#B583FF');
   } else { addCoins(1,b.x,b.y); addFloat(b.x,b.y-20,'small reward','#9E95CF'); }
   hud();
   }catch(err){ unstick('hitBlock: '+err.message) }
@@ -1957,12 +2003,33 @@ async function interact(){
 /* rune stone: an endless practice spot — answer a question, earn coins.
    The reward shrinks with every use of the same stone (never below 2), so a level can
    always be finished, but farming stays slow enough to keep the pace. */
+/* what is still out there that could hand over a missing mission item */
+function shardSourcesLeft(){
+  if(!LV||LV.mission!=='shards') return 0;
+  return LV.blocks.filter(b=>!b.used&&b.type==='purple').length + LV.wells.filter(w=>!w.used).length;
+}
+function keySourcesLeft(){
+  if(!LV||LV.mission!=='key'||LV.hasKey) return 0;
+  return LV.chests.filter(c=>!c.open).length + LV.blocks.filter(b=>!b.used&&b.type==='gold').length;
+}
 async function runeStone(st){
   const q=Math.random()<.5?QM.vocab(SESSION.diff):QM.grammar(SESSION.diff);
   const {ok,shielded}=await ask(q);
   if(ok||shielded){
-    const r=Math.max(2,6-st.used); st.used++;
-    addCoins(r,st.x+st.w/2,st.y); Snd.shard(); burst(st.x+st.w/2,st.y+10,'#38E1C8',12);
+    /* A rune stone never runs out, so it is also the promise that a level can always be finished:
+       when nothing else on the map can still give the missing shard or key, the stone gives it. */
+    if(LV.mission==='shards'&&LV.shardsGot<LV.needShards&&!shardSourcesLeft()){
+      LV.shardsGot++; addFloat(st.x,st.y,'+💎 shard from the rune','#B583FF'); Snd.shard();
+      toast('The rune gave up a crystal shard');
+      if(NET.mode==='coop') NET.send({t:'ev',k:'shard',n:LV.shardsGot});
+    } else if(LV.mission==='key'&&!LV.hasKey&&!keySourcesLeft()){
+      LV.hasKey=true; addFloat(st.x,st.y,'🔑 Golden key','#FFE08A'); Snd.shard();
+      toast('The rune was hiding the golden key');
+      if(NET.mode==='coop') NET.send({t:'ev',k:'key'});
+    } else {
+      const r=Math.max(2,6-st.used); st.used++;
+      addCoins(r,st.x+st.w/2,st.y); Snd.shard(); burst(st.x+st.w/2,st.y+10,'#38E1C8',12);
+    }
   } else { addFloat(st.x,st.y,'no coins this time','#9E95CF'); st.used=Math.max(0,st.used-1) }
   hud();
 }
@@ -1980,9 +2047,14 @@ function tryFinish(){
   const miss=[];
   if(LV.coins<LV.needCoins) miss.push('You need '+(LV.needCoins-LV.coins)+' more coins — answer questions at a rune stone 💠.');
   if(!LV.bossDead) miss.push('Defeat the '+LV.world.boss+'.');
-  if(LV.mission==='key'&&!LV.hasKey) miss.push('Find the golden key.');
+  if(LV.mission==='key'&&!LV.hasKey) miss.push(keySourcesLeft()
+      ? 'Find the golden key — try the chest 🧰 and the gold blocks.'
+      : 'Find the golden key — answer at a rune stone 💠 and it will give it up.');
   if(LV.mission==='key'&&!LV.freed) miss.push('Save the wizard.');
-  if(LV.mission==='shards'&&LV.shardsGot<LV.needShards) miss.push('Collect '+(LV.needShards-LV.shardsGot)+' more crystal shards.');
+  if(LV.mission==='shards'&&LV.shardsGot<LV.needShards) miss.push('Collect '+(LV.needShards-LV.shardsGot)+
+    ' more crystal shards — '+(shardSourcesLeft()
+      ? 'purple blocks 🟣 and wells still have them.'
+      : 'a rune stone 💠 will give you one.'));
   if(miss.length){ toast(miss[0],2600); return }
   finishLevel(true);
 }

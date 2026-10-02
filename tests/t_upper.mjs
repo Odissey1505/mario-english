@@ -38,7 +38,12 @@ for(const L of lessons){
       if(/Listen and/.test(q.prompt)) listen++;
       if(q.options){ if(new Set(q.options).size!==q.options.length) dup++;
         const a=String(q.options[q.correct]).toLowerCase();
-        if(a.length>3&&(q.prompt+' '+(q.sub||'')).toLowerCase().includes(a)) leak++; }
+        /* only the part of the window that comes from the lesson can leak — the fixed
+           instruction line is the same for every question and may happen to contain a word */
+        const shown=' '+(q.prompt+' '+(q.sub||'')).toLowerCase()
+          .split('one of these four comes from a different lesson').join(' ')
+          .replace(/[^a-z0-9']+/g,' ')+' ';
+        if(a.length>3&&shown.indexOf(' '+a.replace(/[^a-z0-9']+/g,' ')+' ')>=0) leak++; }
     }
     for(let i=0;i<260;i++){
       const q=QM.grammar(1); gp.add(q.prompt+'|'+(q.sub||''));
@@ -95,6 +100,45 @@ const er=J(`(function(){
 console.log('error-spotting questions seen:', er.seen, '| with chunks out of order:', er.scrambled);
 if(!er.seen) fail('no error-spotting questions were generated at all');
 if(er.scrambled) fail(er.scrambled+' error-spotting questions had their sentence chunks shuffled');
+
+/* --- nothing reads the answer out loud --- */
+const audio=J(`(function(){
+  SESSION.topics.v=Object.keys(WORDBANK).filter(k=>k.startsWith('cv:b'));
+  let spoken=0, kinds={}, n=0;
+  for(const mode of ['choice','mixed','typing']){
+    S.opts={emoji:true,answer:mode};
+    for(let i=0;i<900;i++){ const q=QM.vocab(i%3); n++;
+      if(q.listen){ spoken++; kinds[q.prompt]=(kinds[q.prompt]||0)+1 } }
+  }
+  return {n,spoken,kinds};
+})()`);
+console.log('vocabulary questions drawn:', audio.n, '| questions carrying audio:', audio.spoken);
+if(audio.spoken) fail(audio.spoken+' vocabulary questions still offer to say the answer out loud: '+JSON.stringify(audio.kinds));
+/* and the open question window must have no speaker button on it */
+w.eval(`S.opts={emoji:true,answer:'choice'}; SESSION.topics.v=['cv:b1.0.0']; SESSION.topics.g=['cg:b1.0.0'];
+        SESSION.world=1; SESSION.diff=1; startLevel(1,1,{seed:'audio'});`);
+await new Promise(r=>setTimeout(r,80));
+let withBtn=0;
+for(let i=0;i<24;i++){
+  w.eval("unstick('t');ask(QM.vocab(1))");
+  await new Promise(r=>setTimeout(r,12));
+  if([...w.document.querySelectorAll('#q-card .pill')].some(b=>/🔊/.test(b.textContent))) withBtn++;
+}
+w.eval("unstick('t')");
+if(withBtn) fail(withBtn+' of 24 question windows showed a 🔊 button that speaks the answer');
+console.log('question windows checked for a speaker button:', 24, '| found:', withBtn);
+
+/* a word with no definition at all still has to be askable — that is the one audio task */
+const fallback=J(`(function(){
+  WORDBANK['zz:test']={n:'Audio fallback',custom:true,lv:[['blorptastic||'],['blorptastic||'],['blorptastic||']]};
+  rebuildWords(); SESSION.topics.v=['zz:test']; S.opts={emoji:false,answer:'choice'};
+  let listens=0, ok=0;
+  for(let i=0;i<40;i++){ const q=QM.vocab(1); if(q.listen) listens++; if(q.prompt) ok++ }
+  delete WORDBANK['zz:test']; rebuildWords();
+  return {listens,ok};
+})()`);
+if(!fallback.ok) fail('a word with no definition became unaskable');
+console.log('word with no definition at all → questions generated:', fallback.ok, '| of which listening tasks:', fallback.listens);
 
 /* --- a level really builds and plays from an Upper-Intermediate lesson --- */
 w.eval(`SESSION.topics.v=['cv:b1.0.0']; SESSION.topics.g=['cg:b1.0.0'];

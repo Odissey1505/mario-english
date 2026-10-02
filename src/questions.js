@@ -53,6 +53,8 @@ const QM={
     const type=forceType||rnd(types);
     const base={tag:'Vocabulary · '+topicName,ref:{type:'word',id:w.en,word:w},clue,
                 ex:explain,ee:explain,tr:clue,time:DIFF[diff].timer,kind:'choice',listen:null,pic:false};
+    /* Only the listening task carries audio. Everywhere else a 🔊 button would simply read the
+       answer out, which turns "which word means this" into a free point. */
     /* start with the answer's own value so a distractor can never look identical to it
        (two different words can share an emoji, for instance) */
     const distract=(n,fn)=>{ const seen=new Set([fn(w)]); const res=[];
@@ -61,13 +63,13 @@ const QM={
     if(type==='pic'){ const ds=distract(nOpt-1,o=>o.ic).filter(o=>o.ic);
       if(ds.length<2) return this.vocab(diff,safe,1);
       const opts=shuffle([w,...ds]); return {...base,pic:true,prompt:'Which picture shows "'+w.en+'"?',sub:'Tap the right picture',
-        options:opts.map(o=>o.ic),correct:opts.indexOf(w),answer:w.ic+' '+w.en,listen:w.en}; }
+        options:opts.map(o=>o.ic),correct:opts.indexOf(w),answer:w.ic+' '+w.en}; }
     if(type==='name'){ const ds=distract(nOpt-1,o=>o.en);
       return (()=>{ const opts=shuffle([w,...ds]); return {...base,prompt:'What is this in English?',sub:w.ic+'   ',
-        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en,listen:w.en} })(); }
+        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en} })(); }
     if(type==='def'){ const ds=distract(nOpt-1,o=>o.en);
       const opts=shuffle([w,...ds]); return {...base,prompt:'Which word means this?',sub:'"'+w.def+'"',
-        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en,listen:w.en}; }
+        options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en}; }
     if(type==='listen'){ const ds=distract(nOpt-1,o=>o.en);
       const opts=shuffle([w,...ds]); return {...base,prompt:'Listen and choose the word',sub:'Tap the speaker to hear it again',
         options:opts.map(o=>o.en),correct:opts.indexOf(w),answer:w.en,listen:w.en,autoListen:true}; }
@@ -75,7 +77,7 @@ const QM={
       let tries=0; while(wrong.size<nOpt-1&&tries++<20){ const m=this.misspell(w.en); if(m!==w.en) wrong.add(m) }
       if(wrong.size<2) return this.vocab(diff,safe,1);
       const opts=shuffle([w.en,...[...wrong]]);
-      return {...base,prompt:'Choose the correct spelling',sub:clue,options:opts,correct:opts.indexOf(w.en),answer:w.en,listen:w.en}; }
+      return {...base,prompt:'Choose the correct spelling',sub:clue,options:opts,correct:opts.indexOf(w.en),answer:w.en}; }
     if(type==='odd'){ const otherTopics=Object.keys(WORDBANK).filter(t=>t!==w.topic);
       const same=shuffle(wordsOf(w.topic,w.lv).filter(x=>x.en!==w.en)).slice(0,2);
       /* the same word can live in two topics (fish is an animal and a food), so the odd
@@ -86,7 +88,7 @@ const QM={
       if(!alien||same.length<2) return this.vocab(diff,safe,1);
       const opts=shuffle([w,...same,alien]);
       return {...base,ref:{type:'word',id:alien.en,word:alien},prompt:'Which word does not belong?',
-        sub:'Three words share a topic, one does not',
+        sub:'One of these four comes from a different lesson',
         options:opts.map(o=>o.en),correct:opts.indexOf(alien),answer:alien.en,
         ex:alien.en+' is about '+WORDBANK[alien.topic].n+'; the others are about '+topicName+'.',
         ee:alien.en+' is about '+WORDBANK[alien.topic].n+'.',clue:'Look at the topic of each word'}; }
@@ -95,12 +97,12 @@ const QM={
       const n=clamp(Math.round(bare.length*share),1,9);
       let t=0; while(hide.size<n&&t++<40){ const i=rint(0,chars.length-1); if(chars[i]!==' ') hide.add(i) }
       const masked=chars.map((c,i)=>hide.has(i)?'_':c).join(' ');
-      return {...base,kind:'input',prompt:'Complete the word',sub:masked+'   ·   '+clue,correct:w.en,answer:w.en,listen:w.en}; }
+      return {...base,kind:'input',prompt:'Complete the word',sub:masked+'   ·   '+clue,correct:w.en,answer:w.en}; }
     if(type==='scramble'){ const letters=shuffle(w.en.replace(/ /g,'').split(''));
       return {...base,kind:'seq',prompt:'Put the letters in the right order',sub:clue,
-        tokens:letters,correct:w.en.replace(/ /g,''),answer:w.en,listen:w.en}; }
+        tokens:letters,correct:w.en.replace(/ /g,''),answer:w.en}; }
     if(w.def) return {...base,kind:'input',prompt:'Write the word that means this',sub:'"'+w.def+'"',
-                      correct:w.en,answer:w.en,listen:w.en};
+                      correct:w.en,answer:w.en};
     return {...base,kind:'input',prompt:'Listen and type the word',sub:clue,correct:w.en,answer:w.en,listen:w.en,autoListen:true};
   },
 
